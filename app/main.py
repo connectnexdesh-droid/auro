@@ -37,7 +37,7 @@ from app.config import (
     ensure_runtime_directories,
     load_settings,
 )
-from app.runner import load_task, safe_filename, run_task
+from app.runner import TaskValidationError, load_task, safe_filename, run_task
 
 
 LOGGER = logging.getLogger("auro.web")
