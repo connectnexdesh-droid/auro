@@ -121,7 +121,7 @@ def main() -> None:
 
                     # Dashboard navigation and CSV upload.
                     page.goto(base_url, wait_until="networkidle")
-                    assert page.locator("h1").inner_text().strip() == "Dashboard"
+                    assert page.locator("h1").inner_text().strip() == "Automation dashboard"
                     assert page.locator('a.task-name[href="/task/demo_form"]').count() == 1
 
                     page.locator("#input-file").set_input_files(
