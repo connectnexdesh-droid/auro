@@ -1,50 +1,137 @@
 name: meta_email_registration
-description: "Assist with one Meta/Facebook email registration. The user enters personal details and verification codes manually."
+description: "Guided Meta email registration. User manually enters the email, personal details, password, verification code, consent, and logout."
 headless: false
 timeout_ms: 600000
 retry: 0
+sensitive: true
 
 delay:
   min_ms: 0
   max_ms: 0
 
-# Do not save login cookies or credentials by default.
+# Never load or persist cookies for this registration flow.
 storage_state:
   load: false
   save: false
 
 steps:
-  # auth.meta.com currently redirects to the Facebook login page.
+  # Open Meta and choose the email/mobile registration route.
   - action: goto
     url: "https://auth.meta.com/"
 
   - action: wait_for
-    selector: "text=Create new account"
+    selector: "text=Use mobile number or email address"
     state: visible
 
   - action: click
-    selector: "text=Create new account"
+    selector: "text=Use mobile number or email address"
 
-  # Keep the browser visible so the user can enter their own details.
   - action: wait_for
-    selector: "button:has-text('Sign Up')"
+    selector: "input[type='email'], input[name='email'], input[placeholder*='email' i]"
     state: visible
 
-  # This screenshot is taken before any personal details are entered.
-  - action: screenshot
-    name: "blank-meta-signup-form"
-    full_page: true
+  # Open Tmailor so the user can copy the address manually.
+  - action: goto
+    url: "https://tmailor.com/"
 
-  # Manual checkpoint: enter your own details and submit the form.
   - action: wait_for
-    selector: "button:has-text('Sign Up')"
+    selector: "body"
+    state: visible
+
+  # User copies the email from Tmailor. Return to the Meta form.
+  - action: press
+    selector: "body"
+    key: "Alt+ArrowLeft"
+
+  - action: wait_for
+    selector: "input[type='email'], input[name='email'], input[placeholder*='email' i]"
+    state: visible
+
+  # User pastes the email and clicks Continue.
+  - action: wait_for
+    selector: "input[type='email'], input[name='email'], input[placeholder*='email' i]"
     state: hidden
 
-  # Manual checkpoint: complete email verification in the visible browser.
+  # User clicks Get Started if Meta displays that step.
   - action: wait_for
-    selector: "input[autocomplete='one-time-code'], input[name='code'], input[name='confirmation_code'], input[aria-label*='code' i], input[placeholder*='code' i]"
+    selector: "text=Get Started"
+    state: hidden
+
+  - action: wait_for
+    selector: "input[name='firstname'], input[placeholder*='First name' i]"
+    state: visible
+
+  # User enters first and last name, then clicks Continue.
+  - action: wait_for
+    selector: "input[name='firstname'], input[placeholder*='First name' i]"
+    state: hidden
+
+  # User changes only the year to 1987, leaves month/day as Meta requests,
+  # and clicks Continue.
+  - action: wait_for
+    selector: "select[name*='year' i], select[aria-label*='year' i]"
     state: visible
 
   - action: wait_for
-    selector: "input[autocomplete='one-time-code'], input[name='code'], input[name='confirmation_code'], input[aria-label*='code' i], input[placeholder*='code' i]"
+    selector: "select[name*='year' i], select[aria-label*='year' i]"
     state: hidden
+
+  # Password is typed by the user; it is not stored in this workflow.
+  - action: wait_for
+    selector: "input[type='password']"
+    state: visible
+
+  - action: wait_for
+    selector: "input[type='password']"
+    state: hidden
+
+  # The user handles any optional profile step and the final consent.
+  - action: wait_for
+    selector: "text=Not now"
+    state: hidden
+
+  - action: wait_for
+    selector: "text=I agree"
+    state: visible
+
+  - action: wait_for
+    selector: "text=I agree"
+    state: hidden
+
+  # Open Tmailor again; the user reads the code and copies it manually.
+  - action: wait_for
+    selector: "input[autocomplete='one-time-code'], input[name='code'], input[aria-label*='code' i], input[placeholder*='code' i]"
+    state: visible
+
+  - action: goto
+    url: "https://tmailor.com/"
+
+  - action: wait_for
+    selector: "body"
+    state: visible
+
+  - action: press
+    selector: "body"
+    key: "Alt+ArrowLeft"
+
+  - action: wait_for
+    selector: "input[autocomplete='one-time-code'], input[name='code'], input[aria-label*='code' i], input[placeholder*='code' i]"
+    state: visible
+
+  # User pastes the verification code and clicks Confirm/Continue.
+  - action: wait_for
+    selector: "input[autocomplete='one-time-code'], input[name='code'], input[aria-label*='code' i], input[placeholder*='code' i]"
+    state: hidden
+
+  # User opens the account menu and manually logs out.
+  - action: wait_for
+    selector: "button[aria-label*='menu' i], button[aria-label*='more' i]"
+    state: visible
+
+  - action: wait_for
+    selector: "text=Log out"
+    state: visible
+
+  - action: wait_for
+    selector: "text=Log in"
+    state: visible

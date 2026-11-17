@@ -172,6 +172,9 @@ def load_task(task_path: str | Path) -> dict[str, Any]:
     if "headless" in task and not isinstance(task["headless"], bool):
         raise TaskValidationError("Task 'headless' must be true or false.")
 
+    if "sensitive" in task and not isinstance(task["sensitive"], bool):
+        raise TaskValidationError("Task 'sensitive' must be true or false.")
+
     if "timeout_ms" in task:
         _validate_non_negative_int(
             task["timeout_ms"], "timeout_ms", minimum=1
@@ -603,6 +606,7 @@ async def _run_attempt(
     context: BrowserContext | None = None
     page: Page | None = None
     tracing_started = False
+    sensitive_task = bool(task.get("sensitive", False))
     current_global_step = 0
     current_record_index = 0
     attempt_error: Exception | None = None
@@ -634,12 +638,15 @@ async def _run_attempt(
             context = await browser.new_context(**context_options)
             context.set_default_timeout(timeout_ms)
 
-            await context.tracing.start(
-                screenshots=True,
-                snapshots=True,
-                sources=True,
-            )
-            tracing_started = True
+            # Sensitive workflows can contain personal details, passwords,
+            # or verification codes. Do not record Playwright traces for them.
+            if not sensitive_task:
+                await context.tracing.start(
+                    screenshots=True,
+                    snapshots=True,
+                    sources=True,
+                )
+                tracing_started = True
 
             page = await context.new_page()
             completed_step_count = 0
@@ -740,8 +747,9 @@ async def _run_attempt(
                     attempt=attempt,
                 )
 
-            await context.tracing.stop()
-            tracing_started = False
+            if tracing_started:
+                await context.tracing.stop()
+                tracing_started = False
 
     except Exception as exc:
         attempt_error = exc
@@ -755,8 +763,8 @@ async def _run_attempt(
             step_index=current_global_step,
         )
 
-        # Capture a screenshot of the current page before closing the context.
-        if page is not None:
+        # Avoid screenshots of pages containing personal or verification data.
+        if page is not None and not sensitive_task:
             failure_path = (
                 settings.screenshots_dir
                 / f"{safe_task_name}_{run_id}_{current_global_step}_failure.png"
@@ -788,8 +796,8 @@ async def _run_attempt(
                     step_index=current_global_step,
                 )
 
-        # Preserve the Playwright trace for diagnosing this failed attempt.
-        if context is not None and tracing_started:
+        # Preserve traces only for non-sensitive workflows.
+        if context is not None and tracing_started and not sensitive_task:
             trace_path = (
                 settings.screenshots_dir
                 / f"{safe_task_name}_{run_id}_attempt_{attempt}.zip"

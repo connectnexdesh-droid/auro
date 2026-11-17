@@ -154,6 +154,25 @@ def test_txt_input_reader(tmp_path: Path) -> None:
     ]
 
 
+def test_sensitive_task_flag_must_be_boolean(tmp_path: Path) -> None:
+    """Sensitive workflows must opt in with an explicit boolean."""
+
+    task_path = tmp_path / "invalid_sensitive.yaml"
+    task_path.write_text(
+        """
+name: invalid_sensitive
+sensitive: yes-maybe
+steps:
+  - action: goto
+    url: "https://example.com"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(TaskValidationError, match="sensitive.*true or false"):
+        load_task(task_path)
+
+
 def test_unsupported_action_is_rejected(tmp_path: Path) -> None:
     """Unknown YAML actions must be rejected before launching a browser."""
 
