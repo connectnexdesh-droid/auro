@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="page-heading">
+  <div>
+    <div class="eyebrow">PREFERENCES</div>
+    <h1>Settings</h1>
+    <p class="page-subtitle">Configure default browser execution behavior for new runs.</p>
+  </div>
+  <span class="environment-label"><span class="connection-dot"></span> SAVED LOCALLY</span>
+</section>
+
+{% if saved %}
+<div class="success-banner" role="status">Settings saved successfully. New runs will use these defaults.</div>
+{% endif %}
+
+<div class="settings-layout">
+  <section class="panel settings-panel">
+    <div class="panel-heading">
+      <div>
+        <div class="eyebrow">RUNNER CONFIGURATION</div>
+        <h2>Browser defaults</h2>
+      </div>
+      <span class="panel-icon">⚙</span>
+    </div>
+
+    <form action="/settings" method="post" class="settings-form">
+      <div class="setting-row">
+        <div class="setting-copy">
+          <label for="headless">Headless browser</label>
+          <p>Run Chrome without opening a visible browser window. A task's own <code>headless</code> value overrides this default unless the CLI explicitly overrides it.</p>
+        </div>
+        <select id="headless" name="headless" class="text-input setting-control">
+          <option value="true" {% if settings.headless == "true" %}selected{% endif %}>Enabled</option>
+          <option value="false" {% if settings.headless == "false" %}selected{% endif %}>Disabled</option>
+        </select>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-copy">
+          <label for="delay_min_ms">Minimum delay (milliseconds)</label>
+          <p>Lower bound for the random pause between workflow steps.</p>
+        </div>
+        <input id="delay_min_ms" name="delay_min_ms" class="text-input setting-control" type="number" min="0" max="60000" value="{{ settings.delay_min_ms }}" required>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-copy">
+          <label for="delay_max_ms">Maximum delay (milliseconds)</label>
+          <p>Upper bound for the random pause between workflow steps.</p>
+        </div>
+        <input id="delay_max_ms" name="delay_max_ms" class="text-input setting-control" type="number" min="0" max="60000" value="{{ settings.delay_max_ms }}" required>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-copy">
+          <label for="retry">Retry attempts</label>
+          <p>Number of retries after a failed workflow attempt. Use 0 to disable retries.</p>
+        </div>
+        <input id="retry" name="retry" class="text-input setting-control" type="number" min="0" max="10" value="{{ settings.retry }}" required>
+      </div>
+
+      <div class="setting-row">
+        <div class="setting-copy">
+          <label for="timeout_ms">Action timeout (milliseconds)</label>
+          <p>Maximum time to wait for an individual Playwright action.</p>
+        </div>
+        <input id="timeout_ms" name="timeout_ms" class="text-input setting-control" type="number" min="1000" max="120000" step="1000" value="{{ settings.timeout_ms }}" required>
+      </div>
+
+      <div class="form-actions settings-actions">
+        <span class="helper-text">Settings are stored in the local SQLite database.</span>
+        <button class="button button-primary" type="submit">Save settings</button>
+      </div>
+    </form>
+  </section>
+
+  <aside class="panel settings-note">
+    <div class="eyebrow">ABOUT AURO</div>
+    <h3>Local-first automation</h3>
+    <p>AURO runs browser workflows on the machine hosting the application. Uploaded files, screenshots, sessions, and run history stay in its configured folders.</p>
+    <div class="note-divider"></div>
+    <div class="note-item"><span class="connection-dot"></span><span>Python + FastAPI</span></div>
+    <div class="note-item"><span class="connection-dot"></span><span>Playwright + installed Chrome</span></div>
+    <div class="note-item"><span class="connection-dot"></span><span>SQLite storage</span></div>
+    <div class="warning-note">Do not expose this dashboard to the public internet without adding authentication and access controls.</div>
+  </aside>
+</div>
+{% endblock %}
