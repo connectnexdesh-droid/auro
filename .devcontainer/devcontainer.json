@@ -1,7 +1,7 @@
 {
   "name": "AURO Browser Automation Panel",
   "image": "mcr.microsoft.com/devcontainers/python:3.12",
-  "postCreateCommand": "pip install -r requirements.txt && playwright install chromium --with-deps && playwright install chrome",
+  "postCreateCommand": "pip install -r requirements.txt && playwright install chromium --with-deps && playwright install chrome && python -c \"from app.config import ensure_runtime_directories, load_settings; ensure_runtime_directories(); print(load_settings()); print('AURO Step 1 verification passed')\"",
   "forwardPorts": [8000],
   "portsAttributes": {
     "8000": {
