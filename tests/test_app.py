@@ -138,6 +138,42 @@ def test_run_status_logs_and_screenshot_gallery(app_client, monkeypatch: pytest.
         input_path: str | None = None,
     ) -> None:
         main_module.database.log(run_id, "INFO", "Dashboard test run started.")
+        main_module.database.initialize_run_progress(
+            run_id,
+            total_steps=2,
+            total_records=1,
+        )
+        main_module.database.reset_run_progress(run_id, 1)
+
+        first_step = main_module.database.start_run_step(
+            run_id,
+            attempt=1,
+            record_index=1,
+            step_index=1,
+            global_step=1,
+            action="goto",
+        )
+        main_module.database.finish_run_step(
+            first_step,
+            status="completed",
+            duration_ms=120,
+            completed_steps=1,
+        )
+
+        second_step = main_module.database.start_run_step(
+            run_id,
+            attempt=1,
+            record_index=1,
+            step_index=2,
+            global_step=2,
+            action="click",
+        )
+        main_module.database.finish_run_step(
+            second_step,
+            status="completed",
+            duration_ms=80,
+            completed_steps=2,
+        )
         main_module.database.finish_run(
             run_id,
             "completed",
@@ -153,7 +189,19 @@ def test_run_status_logs_and_screenshot_gallery(app_client, monkeypatch: pytest.
 
     status = client.get(f"/task/demo_form/status/{run_id}")
     assert status.status_code == 200
-    assert status.json()["status"] == "completed"
+    status_data = status.json()
+    assert status_data["status"] == "completed"
+    assert status_data["total_steps"] == 2
+    assert status_data["completed_steps"] == 2
+    assert status_data["progress_percent"] == 100
+    assert status_data["elapsed_seconds"] >= 0
+    assert status_data["expected_finish_at"] is None
+    assert [step["action"] for step in status_data["timeline"]] == ["goto", "click"]
+    assert [step["status"] for step in status_data["timeline"]] == [
+        "completed",
+        "completed",
+    ]
+    assert [step["duration_ms"] for step in status_data["timeline"]] == [120, 80]
 
     logs = client.get(f"/task/demo_form/logs/{run_id}")
     assert logs.status_code == 200
