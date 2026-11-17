@@ -52,7 +52,9 @@ auro/
 ├── sessions/
 │   └── .gitkeep
 ├── tests/
-│   └── test_runner.py
+│   ├── test_app.py
+│   ├── test_runner.py
+│   └── dashboard_browser_smoke.py
 ├── requirements.txt
 ├── Dockerfile
 ├── docker-compose.yml
@@ -429,11 +431,20 @@ CI-তে:
 2. requirements install
 3. Playwright-এর জন্য Google Chrome install
 4. Python compile/syntax check
-5. pytest suite
+5. pytest suite — runner unit tests ও Dashboard/API integration tests
 6. Selenium demo form-এর headless browser smoke test
-7. Screenshot artifact upload
-8. Docker Compose config validation
-9. Docker image build
+7. Real-browser Dashboard E2E — CSV upload, Settings, Task creation, Run, Stop, Logs ও Screenshot Gallery
+8. Screenshot artifact upload
+9. Docker Compose config validation
+10. Docker image build
+
+Local environment-এ Dashboard-এর real-browser E2E test চালাতে:
+
+```bash
+python tests/dashboard_browser_smoke.py
+```
+
+এই script অস্থায়ী runtime directories তৈরি করে, local Uvicorn server চালু করে, Chrome দিয়ে Dashboard পরীক্ষা করে এবং শেষে server বন্ধ করে।
 
 ফলাফল দেখতে Repository-এর **Actions** tab খুলুন। Screenshot artifact সফল CI run-এর সঙ্গে ৭ দিন রাখা হয়।
 
