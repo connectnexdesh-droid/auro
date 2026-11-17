@@ -99,6 +99,41 @@ def init_db(path: str | Path | None = None) -> None:
             CREATE INDEX IF NOT EXISTS idx_runs_task_started
                 ON runs(task_name, started_at DESC);
 
+            CREATE TABLE IF NOT EXISTS run_progress (
+                run_id TEXT PRIMARY KEY,
+                total_steps INTEGER NOT NULL DEFAULT 0,
+                completed_steps INTEGER NOT NULL DEFAULT 0,
+                current_step INTEGER NOT NULL DEFAULT 0,
+                current_action TEXT,
+                record_index INTEGER NOT NULL DEFAULT 0,
+                total_records INTEGER NOT NULL DEFAULT 0,
+                attempt INTEGER NOT NULL DEFAULT 1,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (run_id) REFERENCES runs(id)
+                    ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS run_steps (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id TEXT NOT NULL,
+                sequence INTEGER NOT NULL,
+                attempt INTEGER NOT NULL,
+                record_index INTEGER NOT NULL,
+                step_index INTEGER NOT NULL,
+                action TEXT NOT NULL,
+                status TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                finished_at TEXT,
+                duration_ms INTEGER,
+                error TEXT,
+                UNIQUE(run_id, sequence),
+                FOREIGN KEY (run_id) REFERENCES runs(id)
+                    ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_run_steps_run_sequence
+                ON run_steps(run_id, sequence ASC);
+
             CREATE TABLE IF NOT EXISTS logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 run_id TEXT NOT NULL,
@@ -268,6 +303,50 @@ def finish_run(
             (normalized_status, finished_at, row["task_name"]),
         )
 
+        # A cancelled or failed run must not leave an action marked as running.
+        if normalized_status in {"failed", "cancelled"}:
+            connection.execute(
+                """
+                UPDATE run_steps
+                SET status = ?, finished_at = ?, error = COALESCE(error, ?)
+                WHERE run_id = ? AND status = 'running'
+                """,
+                (
+                    normalized_status,
+                    finished_at,
+                    error or normalized_status.title(),
+                    run_id,
+                ),
+            )
+
+        progress_status = (
+            "Completed" if normalized_status in {"completed", "success"}
+            else normalized_status.title()
+        )
+        connection.execute(
+            """
+            UPDATE run_progress
+            SET completed_steps = CASE
+                    WHEN ? IN ('completed', 'success') THEN total_steps
+                    ELSE completed_steps
+                END,
+                current_step = CASE
+                    WHEN ? IN ('completed', 'success') THEN total_steps
+                    ELSE current_step
+                END,
+                current_action = ?,
+                updated_at = ?
+            WHERE run_id = ?
+            """,
+            (
+                normalized_status,
+                normalized_status,
+                progress_status,
+                finished_at,
+                run_id,
+            ),
+        )
+
 
 def log(run_id: str, level: str, message: str) -> int:
     """
@@ -374,3 +453,204 @@ def set_setting(key: str, value: str) -> None:
             """,
             (clean_key, str(value)),
         )
+
+def initialize_run_progress(
+    run_id: str,
+    *,
+    total_steps: int,
+    total_records: int,
+) -> None:
+    """Create or reset the progress summary for a newly-started run."""
+
+    if total_steps < 0 or total_records < 0:
+        raise ValueError("Progress totals cannot be negative.")
+
+    with _connect() as connection:
+        connection.execute(
+            """
+            INSERT INTO run_progress (
+                run_id, total_steps, completed_steps, current_step,
+                current_action, record_index, total_records, attempt, updated_at
+            )
+            VALUES (?, ?, 0, 0, 'Preparing workflow', 0, ?, 1, ?)
+            ON CONFLICT(run_id) DO UPDATE SET
+                total_steps = excluded.total_steps,
+                completed_steps = 0,
+                current_step = 0,
+                current_action = 'Preparing workflow',
+                record_index = 0,
+                total_records = excluded.total_records,
+                attempt = 1,
+                updated_at = excluded.updated_at
+            """,
+            (run_id, total_steps, total_records, utc_now()),
+        )
+
+
+def reset_run_progress(run_id: str, attempt: int) -> None:
+    """Reset the live progress counters when a retry starts."""
+
+    if attempt < 1:
+        raise ValueError("Attempt number must be at least 1.")
+
+    with _connect() as connection:
+        connection.execute(
+            """
+            UPDATE run_progress
+            SET completed_steps = 0,
+                current_step = 0,
+                current_action = 'Starting browser',
+                record_index = 0,
+                attempt = ?,
+                updated_at = ?
+            WHERE run_id = ?
+            """,
+            (attempt, utc_now(), run_id),
+        )
+
+
+def start_run_step(
+    run_id: str,
+    *,
+    attempt: int,
+    record_index: int,
+    step_index: int,
+    global_step: int,
+    action: str,
+) -> int:
+    """Add a running action to the timeline and update the live step label."""
+
+    if min(attempt, record_index, step_index, global_step) < 1:
+        raise ValueError("Attempt and step positions must be positive.")
+
+    started_at = utc_now()
+    with _connect() as connection:
+        sequence_row = connection.execute(
+            """
+            SELECT COALESCE(MAX(sequence), 0) + 1 AS next_sequence
+            FROM run_steps
+            WHERE run_id = ?
+            """,
+            (run_id,),
+        ).fetchone()
+        sequence = int(sequence_row["next_sequence"])
+
+        cursor = connection.execute(
+            """
+            INSERT INTO run_steps (
+                run_id, sequence, attempt, record_index, step_index,
+                action, status, started_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, 'running', ?)
+            """,
+            (
+                run_id,
+                sequence,
+                attempt,
+                record_index,
+                step_index,
+                action,
+                started_at,
+            ),
+        )
+        connection.execute(
+            """
+            UPDATE run_progress
+            SET current_step = ?,
+                current_action = ?,
+                record_index = ?,
+                attempt = ?,
+                updated_at = ?
+            WHERE run_id = ?
+            """,
+            (
+                global_step,
+                action,
+                record_index,
+                attempt,
+                started_at,
+                run_id,
+            ),
+        )
+        return int(cursor.lastrowid)
+
+
+def finish_run_step(
+    step_id: int,
+    *,
+    status: str,
+    duration_ms: int,
+    completed_steps: int | None = None,
+    error: str | None = None,
+) -> None:
+    """Finish one timeline action and persist its measured duration."""
+
+    normalized_status = status.strip().lower()
+    if normalized_status not in {"completed", "failed", "cancelled"}:
+        raise ValueError(f"Unsupported step status: {status!r}")
+
+    finished_at = utc_now()
+    safe_duration = max(0, int(duration_ms))
+
+    with _connect() as connection:
+        row = connection.execute(
+            "SELECT run_id FROM run_steps WHERE id = ?",
+            (step_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"Run step not found: {step_id}")
+
+        connection.execute(
+            """
+            UPDATE run_steps
+            SET status = ?, finished_at = ?, duration_ms = ?, error = ?
+            WHERE id = ?
+            """,
+            (normalized_status, finished_at, safe_duration, error, step_id),
+        )
+
+        if normalized_status == "completed" and completed_steps is not None:
+            connection.execute(
+                """
+                UPDATE run_progress
+                SET completed_steps = MAX(completed_steps, ?),
+                    updated_at = ?
+                WHERE run_id = ?
+                """,
+                (max(0, int(completed_steps)), finished_at, row["run_id"]),
+            )
+
+
+def get_run_progress(run_id: str) -> dict[str, object] | None:
+    """Return the current progress counters for one run."""
+
+    with _connect() as connection:
+        row = connection.execute(
+            "SELECT * FROM run_progress WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+
+    return dict(row) if row else None
+
+
+def get_run_steps(run_id: str, limit: int = 2000) -> list[dict[str, object]]:
+    """Return the run's action timeline in execution order."""
+
+    if limit < 1:
+        raise ValueError("limit must be at least 1.")
+
+    with _connect() as connection:
+        rows = connection.execute(
+            """
+            SELECT id, sequence, attempt, record_index, step_index, action,
+                   status, started_at, finished_at, duration_ms, error
+            FROM run_steps
+            WHERE run_id = ?
+            ORDER BY sequence ASC
+            LIMIT ?
+            """,
+            (run_id, limit),
+        ).fetchall()
+
+    return [dict(row) for row in rows]
+
