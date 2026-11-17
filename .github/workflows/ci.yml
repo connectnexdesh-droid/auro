@@ -49,7 +49,7 @@ jobs:
         run: python -m compileall -q app tests
 
       - name: Run pytest suite
-        run: pytest -v tests/
+        run: python -m pytest -v tests/
 
       # Exercise the real public demo form and leave its screenshot for upload.
       - name: Run browser automation smoke test
