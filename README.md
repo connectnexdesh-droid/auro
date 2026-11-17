@@ -113,7 +113,7 @@ Codespaces সাধারণত Port 8000 detect করে। **Ports** tab থ
 http://localhost:8000
 ```
 
-Port 8000-এর visibility **Private** রাখুন। Server বন্ধ করতে Terminal-এ `Ctrl+C চাপুন।
+Port 8000-এর visibility **Private** রাখুন। Server বন্ধ করতে Terminal-এ `Ctrl+C` চাপুন।
 
 ## ৪. Dashboard ব্যবহার
 
