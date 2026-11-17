@@ -23,6 +23,7 @@ import random
 import re
 import secrets
 import string
+import time
 
 from datetime import datetime, timezone
 from pathlib import Path
@@ -606,6 +607,10 @@ async def _run_attempt(
     current_record_index = 0
     attempt_error: Exception | None = None
 
+    from app import database
+
+    database.reset_run_progress(run_id, attempt)
+
     try:
         async with async_playwright() as playwright:
             # Use the installed Google Chrome, not Playwright's bundled
@@ -667,12 +672,46 @@ async def _run_attempt(
                         / f"{safe_task_name}_{run_id}_{current_global_step}.png"
                     )
 
-                    screenshot_info = await execute_step(
-                        page,
-                        resolved_step,
-                        timeout_ms=timeout_ms,
-                        screenshot_path=screenshot_path,
+                    timeline_step_id = database.start_run_step(
+                        run_id,
+                        attempt=attempt,
+                        record_index=record_index + 1,
+                        step_index=step_index + 1,
+                        global_step=current_global_step + 1,
+                        action=str(resolved_step["action"]),
                     )
+                    step_started = time.perf_counter()
+
+                    try:
+                        screenshot_info = await execute_step(
+                            page,
+                            resolved_step,
+                            timeout_ms=timeout_ms,
+                            screenshot_path=screenshot_path,
+                        )
+                    except asyncio.CancelledError:
+                        database.finish_run_step(
+                            timeline_step_id,
+                            status="cancelled",
+                            duration_ms=int((time.perf_counter() - step_started) * 1000),
+                            error="Stopped by the user.",
+                        )
+                        raise
+                    except Exception as step_error:
+                        database.finish_run_step(
+                            timeline_step_id,
+                            status="failed",
+                            duration_ms=int((time.perf_counter() - step_started) * 1000),
+                            error=f"{type(step_error).__name__}: {step_error}",
+                        )
+                        raise
+                    else:
+                        database.finish_run_step(
+                            timeline_step_id,
+                            status="completed",
+                            duration_ms=int((time.perf_counter() - step_started) * 1000),
+                            completed_steps=current_global_step + 1,
+                        )
 
                     if screenshot_info is not None:
                         screenshots.append(screenshot_info)
@@ -829,6 +868,12 @@ async def run_task(
         raise ValueError(
             f"Run ID {run_id!r} does not exist in the AURO database."
         )
+
+    database.initialize_run_progress(
+        run_id,
+        total_steps=len(records) * len(task["steps"]),
+        total_records=len(records),
+    )
 
     # An explicit CLI override wins first. If the host sets
     # AUTOMATION_HEADLESS (for example, Docker has no desktop display),
