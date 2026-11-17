@@ -57,6 +57,9 @@ jobs:
           mkdir -p screenshots
           python -m app.runner app/tasks/demo_form.yaml --headless
 
+      - name: Run dashboard browser UI smoke test
+        run: python tests/dashboard_browser_smoke.py
+
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
