@@ -1,0 +1,25 @@
+{
+  "name": "AURO Browser Automation Panel",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "postCreateCommand": "pip install -r requirements.txt && playwright install chromium --with-deps && playwright install chrome",
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": {
+      "label": "AURO Automation Dashboard",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-playwright.playwright",
+        "ms-python.python"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "editor.formatOnSave": true,
+        "python.analysis.typeCheckingMode": "basic"
+      }
+    }
+  }
+}
