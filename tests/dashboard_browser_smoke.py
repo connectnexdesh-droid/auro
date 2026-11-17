@@ -199,6 +199,18 @@ def main() -> None:
                         "[data-run-logs] .log-entry"
                     ).first.wait_for()
                     completed_card.locator(
+                        "[data-run-timeline] .timeline-item"
+                    ).first.wait_for()
+                    assert completed_card.locator(
+                        "[data-run-timeline] .timeline-item"
+                    ).count() >= 7
+                    assert completed_card.locator(
+                        "[data-progress-percent]"
+                    ).inner_text() == "100%"
+                    assert completed_card.locator(
+                        "[data-progress-label]"
+                    ).inner_text().find("7 of 7 steps") >= 0
+                    completed_card.locator(
                         "[data-run-screenshots] a.screenshot-thumb img"
                     ).first.wait_for()
                     page.wait_for_function(
@@ -221,10 +233,16 @@ def main() -> None:
                     page.wait_for_function(
                         """() => {
                             const button = document.querySelector('[data-stop-run]');
-                            return button && !button.disabled;
+                            const card = document.querySelector('[data-run-card]:last-of-type');
+                            const activeStep = card && card.querySelector(
+                                '[data-run-timeline] .timeline-item.timeline-running'
+                            );
+                            return button && !button.disabled && activeStep &&
+                                activeStep.textContent.includes('WAIT_FOR');
                         }""",
-                        timeout=10_000,
+                        timeout=30_000,
                     )
+                    assert page.locator("[data-active-eta]").inner_text() != "Calculating…"
                     stop_button.click()
 
                     page.wait_for_function(
@@ -242,13 +260,16 @@ def main() -> None:
                     assert cancelled_card.locator(
                         "[data-run-logs] .log-entry"
                     ).count() >= 1
+                    assert cancelled_card.locator(
+                        "[data-run-timeline] .timeline-item.timeline-cancelled"
+                    ).count() >= 1
 
                     browser.close()
 
                 print(
                     "AURO dashboard browser E2E passed: dashboard, CSV upload, "
                     "settings, task creation, run status, logs, screenshot gallery, "
-                    "and Stop."
+                    "progress, elapsed time, ETA, action timeline, and Stop."
                 )
 
             except Exception:
