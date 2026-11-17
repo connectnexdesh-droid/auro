@@ -1,0 +1,45 @@
+name: demo_form
+description: "Fill and submit the public Selenium demo form."
+headless: false
+timeout_ms: 30000
+retry: 2
+
+# Delay between workflow actions. These pauses make the test flow
+# easier to observe; they are not intended to bypass site protections.
+delay:
+  min_ms: 500
+  max_ms: 1000
+
+# This demo does not need an authenticated browser session.
+storage_state:
+  load: false
+  save: false
+
+steps:
+  - action: goto
+    url: "https://www.selenium.dev/selenium/web/web-form.html"
+
+  - action: fill
+    selector: "input[name='my-text']"
+    value: "AURO Demo User"
+    human_like: true
+
+  - action: fill
+    selector: "input[name='my-password']"
+    value: "DemoPassword123!"
+    human_like: true
+
+  - action: select
+    selector: "select[name='my-select']"
+    value: "1"
+
+  - action: click
+    selector: "button[type='submit']"
+
+  - action: wait_for
+    selector: "text=Received!"
+    state: visible
+
+  - action: screenshot
+    name: "success"
+    full_page: true
