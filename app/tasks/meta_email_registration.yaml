@@ -1,0 +1,61 @@
+name: meta_email_registration
+description: "Assist with one Meta/Facebook email registration. The user enters personal details and verification codes manually."
+headless: false
+timeout_ms: 600000
+retry: 0
+
+delay:
+  min_ms: 0
+  max_ms: 0
+
+# Do not save login cookies or credentials by default.
+storage_state:
+  load: false
+  save: false
+
+steps:
+  # auth.meta.com currently redirects to the Facebook login page.
+  - action: goto
+    url: "https://auth.meta.com/"
+
+  - action: wait_for
+    selector: "text=Create new account"
+    state: visible
+
+  - action: click
+    selector: "text=Create new account"
+
+  # Keep the browser visible so the user can enter their own details.
+  - action: wait_for
+    selector: "button:has-text('Sign Up')"
+    state: visible
+
+  - action: screenshot
+    name: "meta-signup-form"
+    full_page: true
+
+  # Manual checkpoint: enter your own details and submit the form.
+  - action: wait_for
+    selector: "button:has-text('Sign Up')"
+    state: hidden
+
+  - action: screenshot
+    name: "after-signup-submit"
+    full_page: true
+
+  # Manual checkpoint: complete email verification in the visible browser.
+  - action: wait_for
+    selector: "input[autocomplete='one-time-code'], input[name='code'], input[name='confirmation_code'], input[aria-label*='code' i], input[placeholder*='code' i]"
+    state: visible
+
+  - action: screenshot
+    name: "email-verification"
+    full_page: true
+
+  - action: wait_for
+    selector: "input[autocomplete='one-time-code'], input[name='code'], input[name='confirmation_code'], input[aria-label*='code' i], input[placeholder*='code' i]"
+    state: hidden
+
+  - action: screenshot
+    name: "registration-checkpoint"
+    full_page: true
