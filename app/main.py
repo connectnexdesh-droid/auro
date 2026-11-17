@@ -8,6 +8,7 @@ the asynchronous Playwright runner in app.runner.
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import logging
@@ -55,6 +56,11 @@ STATIC_DIR.mkdir(parents=True, exist_ok=True)
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 ALLOWED_UPLOAD_EXTENSIONS = {".csv", ".txt"}
 TASK_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+
+# BackgroundTasks run in the server process. Keep task handles so a user
+# can request cancellation while a browser workflow is running.
+_ACTIVE_RUN_TASKS: dict[str, asyncio.Task[Any]] = {}
+_CANCEL_REQUESTED: set[str] = set()
 
 
 def synchronize_task_files() -> int:
@@ -281,6 +287,19 @@ async def _execute_background_run(
     lifecycle, such as malformed YAML or a missing task file.
     """
 
+    current_task = asyncio.current_task()
+
+    # A stop request can arrive after the HTTP response but before Starlette
+    # starts this BackgroundTask. Honor that request before opening Chrome.
+    if run_id in _CANCEL_REQUESTED:
+        _CANCEL_REQUESTED.discard(run_id)
+        database.finish_run(run_id, "cancelled", error="Stopped before execution.")
+        database.log(run_id, "WARNING", "Run cancelled before browser launch.")
+        return
+
+    if current_task is not None:
+        _ACTIVE_RUN_TASKS[run_id] = current_task
+
     try:
         result = await run_task(
             task_path,
@@ -296,6 +315,20 @@ async def _execute_background_run(
                 result.get("error"),
             )
 
+    except asyncio.CancelledError:
+        # Cancelling the asyncio task unwinds the runner's finally blocks,
+        # which close the Playwright context and Chrome process.
+        try:
+            database.finish_run(
+                run_id,
+                "cancelled",
+                error="Stopped by the user.",
+            )
+            database.log(run_id, "WARNING", "Run stopped by the user.")
+        except Exception:
+            LOGGER.exception("Could not persist cancellation for run %s.", run_id)
+        return
+
     except Exception as exc:
         error = f"{type(exc).__name__}: {exc}"
         LOGGER.exception("Background run %s crashed.", run_id)
@@ -309,6 +342,10 @@ async def _execute_background_run(
                 run_id,
             )
 
+    finally:
+        _ACTIVE_RUN_TASKS.pop(run_id, None)
+        _CANCEL_REQUESTED.discard(run_id)
+
 
 @app.get("/")
 async def dashboard(request: Request):
@@ -320,6 +357,7 @@ async def dashboard(request: Request):
         name="index.html",
         context={
             "tasks": task_records,
+            "uploaded_files": _list_uploaded_files(),
             "page_title": "Dashboard",
         },
     )
@@ -347,11 +385,24 @@ async def task_detail(request: Request, name: str):
             "task_yaml": Path(task.path).read_text(encoding="utf-8")
             if Path(task.path).is_file()
             else "",
+            "uploaded_files": _list_uploaded_files(),
             "runs": runs,
             "logs_by_run": logs_by_run,
             "screenshots_by_run": screenshots_by_run,
             "page_title": f"Task: {name}",
         },
+    )
+
+
+def _list_uploaded_files() -> list[str]:
+    """Return safe names of uploaded CSV/TXT files for the dashboard."""
+
+    settings = load_settings()
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    return sorted(
+        path.name
+        for path in settings.data_dir.iterdir()
+        if path.is_file() and path.suffix.lower() in ALLOWED_UPLOAD_EXTENSIONS
     )
 
 
@@ -448,6 +499,65 @@ async def task_run_status(name: str, run_id: str):
         "finished_at": run.finished_at,
         "error": run.error,
     }
+
+
+@app.get("/task/{name}/logs/{run_id}")
+async def task_run_logs(name: str, run_id: str):
+    """Return recent log entries for live dashboard updates."""
+
+    _task_or_404(name)
+    run = database.get_run(run_id)
+
+    if run is None or run.task_name != name:
+        raise HTTPException(status_code=404, detail="Run not found.")
+
+    return {
+        "run_id": run_id,
+        "logs": [
+            {
+                "id": entry.id,
+                "level": entry.level,
+                "message": entry.message,
+                "created_at": entry.created_at,
+            }
+            for entry in database.get_run_logs(run_id, limit=500)
+        ],
+    }
+
+
+@app.post("/task/{name}/stop/{run_id}")
+async def stop_task_run(name: str, run_id: str):
+    """Request cancellation of a running browser workflow."""
+
+    _task_or_404(name)
+    run = database.get_run(run_id)
+
+    if run is None or run.task_name != name:
+        raise HTTPException(status_code=404, detail="Run not found.")
+
+    if run.status != "running":
+        return {
+            "run_id": run_id,
+            "status": run.status,
+            "message": "This run is no longer running.",
+        }
+
+    active_task = _ACTIVE_RUN_TASKS.get(run_id)
+    if active_task is not None and not active_task.done():
+        active_task.cancel()
+    else:
+        # The queued BackgroundTask may not have started yet.
+        _CANCEL_REQUESTED.add(run_id)
+
+    database.log(run_id, "WARNING", "Stop requested from dashboard.")
+    return JSONResponse(
+        status_code=202,
+        content={
+            "run_id": run_id,
+            "status": "cancelling",
+            "message": "Stop request received.",
+        },
+    )
 
 
 @app.get("/task/{name}/screenshots/{run_id}")
