@@ -1,0 +1,41 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: auro-panel
+    ports:
+      - "8000:8000"
+    environment:
+      # Keep all runtime files inside the mounted persistent directories.
+      DATABASE_PATH: /workspace/data/automation.db
+      TASKS_DIR: /workspace/app/tasks
+      DATA_DIR: /workspace/data
+      SCREENSHOTS_DIR: /workspace/screenshots
+      SESSIONS_DIR: /workspace/sessions
+
+      # A container has no desktop display; run Chrome headlessly by default.
+      AUTOMATION_HEADLESS: "true"
+
+      # These can be changed from the Settings page and stored in SQLite.
+      AUTOMATION_TIMEOUT_MS: "30000"
+      AUTOMATION_DELAY_MIN_MS: "500"
+      AUTOMATION_DELAY_MAX_MS: "2000"
+      AUTOMATION_RETRY: "2"
+    volumes:
+      - ./data:/workspace/data
+      - ./screenshots:/workspace/screenshots
+      - ./sessions:/workspace/sessions
+    shm_size: "1gb"
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
