@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="page-heading">
+  <div>
+    <div class="eyebrow">OVERVIEW</div>
+    <h1>Automation dashboard</h1>
+    <p class="page-subtitle">Create workflows, launch browser runs, and review what happened.</p>
+  </div>
+  <a class="button button-secondary" href="/settings"> <span aria-hidden="true">⚙</span> Settings</a>
+</section>
+
+<section class="metric-grid" aria-label="Workspace summary">
+  <article class="metric-card">
+    <div class="metric-top"><span class="metric-label">Registered tasks</span><span class="metric-symbol">▦</span></div>
+    <div class="metric-value">{{ tasks|length }}</div>
+    <div class="metric-note">YAML workflows available</div>
+  </article>
+  <article class="metric-card">
+    <div class="metric-top"><span class="metric-label">Input files</span><span class="metric-symbol">↥</span></div>
+    <div class="metric-value">{{ uploaded_files|length }}</div>
+    <div class="metric-note">CSV and TXT data files</div>
+  </article>
+  <article class="metric-card">
+    <div class="metric-top"><span class="metric-label">Execution engine</span><span class="metric-symbol">◉</span></div>
+    <div class="metric-value metric-value-small">Playwright</div>
+    <div class="metric-note"><span class="connection-dot"></span> Installed Chrome channel</div>
+  </article>
+</section>
+
+<section class="content-grid dashboard-grid">
+  <div class="panel tasks-panel">
+    <div class="panel-heading">
+      <div>
+        <div class="eyebrow">WORKFLOWS</div>
+        <h2>Your tasks</h2>
+      </div>
+      <span class="count-pill">{{ tasks|length }} total</span>
+    </div>
+
+    {% if tasks %}
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Task</th>
+            <th>Last run</th>
+            <th>Status</th>
+            <th class="align-right">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for task in tasks %}
+          <tr data-task-row data-task-name="{{ task.name }}">
+            <td>
+              <a class="task-name" href="/task/{{ task.name }}">{{ task.name }}</a>
+              <span class="task-path">{{ task.path }}</span>
+            </td>
+            <td class="muted-cell">{{ task.last_run_at or "Never" }}</td>
+            <td><span class="status-badge status-{{ (task.last_run_status or 'idle')|lower }}" data-task-status>{{ task.last_run_status or "Not run" }}</span></td>
+            <td class="align-right">
+              <form class="inline-run-form" action="/task/{{ task.name }}/run" method="post" data-run-form data-task-name="{{ task.name }}">
+                <select class="compact-select" name="input_filename" aria-label="Optional input file">
+                  <option value="">No input file</option>
+                  {% for filename in uploaded_files %}
+                  <option value="{{ filename }}">{{ filename }}</option>
+                  {% endfor %}
+                </select>
+                <button class="button button-small button-primary" type="submit">Run task <span aria-hidden="true">↗</span></button>
+              </form>
+              <span class="inline-run-message" data-run-message aria-live="polite"></span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">⌘</div>
+      <h3>No workflows yet</h3>
+      <p>Create your first YAML task below. AURO will validate it before saving.</p>
+      <a class="button button-primary" href="#create-task">Create a task</a>
+    </div>
+    {% endif %}
+  </div>
+
+  <aside class="stacked-panels">
+    <section class="panel upload-panel">
+      <div class="panel-heading">
+        <div>
+          <div class="eyebrow">INPUT DATA</div>
+          <h2>Upload a file</h2>
+        </div>
+        <span class="panel-icon">↥</span>
+      </div>
+      <p class="panel-description">Add a CSV with column headers or a TXT file with one value per line.</p>
+      <form id="upload-form" class="upload-form" action="/upload" method="post" enctype="multipart/form-data">
+        <label class="file-drop" for="input-file">
+          <span class="upload-symbol">＋</span>
+          <strong>Choose CSV or TXT</strong>
+          <small>Maximum file size: 10 MB</small>
+          <input id="input-file" name="file" type="file" accept=".csv,.txt,text/csv,text/plain" required>
+        </label>
+        <button class="button button-secondary button-full" type="submit">Upload input file</button>
+      </form>
+      <div id="upload-result" class="form-feedback" aria-live="polite"></div>
+      {% if uploaded_files %}
+      <div class="uploaded-list">
+        <div class="mini-heading">AVAILABLE FILES</div>
+        {% for filename in uploaded_files %}
+        <div class="uploaded-file"><span class="file-type">{{ filename.rsplit('.', 1)[-1]|upper }}</span><span>{{ filename }}</span></div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </section>
+
+    <section class="panel quick-tip">
+      <div class="eyebrow">QUICK TIP</div>
+      <h3>Use CSV templates</h3>
+      <p>Reference a column in your YAML with <code>{{ '{{' }}csv.email{{ '}}' }}</code>. AURO runs the workflow once for each CSV row.</p>
+      <a href="https://github.com/connectnexdesh-droid/auro" target="_blank" rel="noopener noreferrer" class="text-link">View repository <span aria-hidden="true">↗</span></a>
+    </section>
+  </aside>
+</section>
+
+<section class="panel editor-panel" id="create-task">
+  <div class="panel-heading">
+    <div>
+      <div class="eyebrow">WORKFLOW BUILDER</div>
+      <h2>Create a YAML task</h2>
+      <p class="panel-description">Give the task a name and paste a complete YAML workflow. The server validates it before saving.</p>
+    </div>
+    <span class="panel-icon">⌘</span>
+  </div>
+  <form action="/tasks/create" method="post" class="task-create-form">
+    <label class="field-label" for="new-task-name">Task name</label>
+    <input id="new-task-name" name="name" class="text-input" type="text" pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,63}" placeholder="my_first_task" required>
+    <label class="field-label" for="new-task-yaml">YAML definition</label>
+    <textarea id="new-task-yaml" name="yaml_content" class="code-editor" rows="15" spellcheck="false" required>name: my_first_task
+description: "A simple example workflow"
+headless: true
+timeout_ms: 30000
+retry: 1
+delay:
+  min_ms: 300
+  max_ms: 800
+steps:
+  - action: goto
+    url: "https://www.selenium.dev/selenium/web/web-form.html"
+  - action: fill
+    selector: "input[name='my-text']"
+    value: "Hello from AURO"
+  - action: click
+    selector: "button[type='submit']"
+  - action: wait_for
+    selector: "text=Received!"
+  - action: screenshot
+    name: "complete"</textarea>
+    <div class="form-actions">
+      <span class="helper-text">Allowed actions: goto, fill, select, click, wait_for, screenshot, press, check, scroll.</span>
+      <button class="button button-primary" type="submit">Validate &amp; save task <span aria-hidden="true">↗</span></button>
+    </div>
+  </form>
+</section>
+{% endblock %}
