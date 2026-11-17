@@ -155,11 +155,11 @@
           <div class="timeline-item timeline-{{ step.status }}" data-step-id="{{ step.id }}">
             <span class="timeline-marker"></span>
             <div class="timeline-copy">
-              <strong>{{ step.action|upper }}</strong>
-              <small>Attempt {{ step.attempt }} · Record {{ step.record_index }} · Step {{ step.step_index }}</small>
-              {% if step.error %}<small class="timeline-error">{{ step.error }}</small>{% endif %}
+              <strong data-step-action>{{ step.action|upper }}</strong>
+              <small data-step-meta>Attempt {{ step.attempt }} · Record {{ step.record_index }} · Step {{ step.step_index }}</small>
+              <small class="timeline-error" data-step-error {% if not step.error %}hidden{% endif %}>{{ step.error or "" }}</small>
             </div>
-            <span class="timeline-result">
+            <span class="timeline-result" data-step-result>
               {% if step.duration_ms is not none %}{{ "%.1f"|format(step.duration_ms / 1000) }}s{% else %}{{ step.status }}{% endif %}
             </span>
           </div>

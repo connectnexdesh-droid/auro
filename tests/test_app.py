@@ -231,6 +231,10 @@ def test_run_status_logs_and_screenshot_gallery(app_client, monkeypatch: pytest.
     assert detail.status_code == 200
     assert "Elapsed" in detail.text
     assert "data-progress-elapsed" in detail.text
+    assert "data-step-action" in detail.text
+    assert "data-step-meta" in detail.text
+    assert "data-step-error" in detail.text
+    assert "data-step-result" in detail.text
 
 
 def test_running_eta_uses_measured_action_durations_and_retry_fallback(app_client) -> None:
