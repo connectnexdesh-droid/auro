@@ -72,7 +72,7 @@ def test_load_demo_task_and_validate_steps() -> None:
     task = load_task(DEMO_TASK)
 
     assert task["name"] == "demo_form"
-    assert task["headless"] is False
+    assert task["headless"] is True
     assert task["retry"] == 2
     assert task["steps"]
     assert task["_source_path"] == str(DEMO_TASK.resolve())
