@@ -18,6 +18,7 @@ import asyncio
 import csv
 import json
 import logging
+import os
 import random
 import re
 import secrets
@@ -829,11 +830,16 @@ async def run_task(
             f"Run ID {run_id!r} does not exist in the AURO database."
         )
 
-    run_headless = (
-        headless
-        if headless is not None
-        else task.get("headless", settings.headless)
-    )
+    # An explicit CLI override wins first. If the host sets
+    # AUTOMATION_HEADLESS (for example, Docker has no desktop display),
+    # that environment setting wins over a task-level YAML value. Otherwise
+    # the task can choose its own headless mode, falling back to app settings.
+    if headless is not None:
+        run_headless = headless
+    elif "AUTOMATION_HEADLESS" in os.environ:
+        run_headless = settings.headless
+    else:
+        run_headless = task.get("headless", settings.headless)
     timeout_ms = task.get("timeout_ms", settings.timeout_ms)
     retry_count = task.get("retry", settings.retry)
 
