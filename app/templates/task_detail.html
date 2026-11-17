@@ -113,7 +113,7 @@
           <div class="mini-heading">EXECUTION LOG</div>
           <div class="log-list" data-run-logs id="logs-{{ run.id }}">
             {% for entry in logs_by_run[run.id] %}
-            <div class="log-entry">
+            <div class="log-entry" data-log-id="{{ entry.id }}">
               <time>{{ entry.created_at }}</time>
               <span class="log-level log-{{ entry.level|lower }}">{{ entry.level }}</span>
               <span class="log-message">{{ entry.message }}</span>
