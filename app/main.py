@@ -287,8 +287,6 @@ async def _execute_background_run(
     lifecycle, such as malformed YAML or a missing task file.
     """
 
-    current_task = asyncio.current_task()
-
     # A stop request can arrive after the HTTP response but before Starlette
     # starts this BackgroundTask. Honor that request before opening Chrome.
     if run_id in _CANCEL_REQUESTED:
@@ -297,15 +295,20 @@ async def _execute_background_run(
         database.log(run_id, "WARNING", "Run cancelled before browser launch.")
         return
 
-    if current_task is not None:
-        _ACTIVE_RUN_TASKS[run_id] = current_task
-
-    try:
-        result = await run_task(
+    # Keep the Playwright work in its own asyncio task. Cancelling this child
+    # task must not cancel Starlette's ASGI request/background-response task.
+    execution_task = asyncio.create_task(
+        run_task(
             task_path,
             input_path=input_path,
             run_id=run_id,
-        )
+        ),
+        name=f"auro-run-{run_id}",
+    )
+    _ACTIVE_RUN_TASKS[run_id] = execution_task
+
+    try:
+        result = await execution_task
 
         if result.get("status") != "completed":
             LOGGER.error(
