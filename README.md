@@ -146,7 +146,7 @@ Task detail page খুলে YAML editor-এ পরিবর্তন করু
 
 - **Live Progress:** মোট workflow step-এর মধ্যে কতটি শেষ হয়েছে এবং বর্তমানে কোন step চলছে।
 - **Elapsed Time:** run শুরু হওয়ার পর থেকে কেটে যাওয়া সময়।
-- **Expected Finish:** অন্তত একটি step শেষ হলে completed step-এর গড় সময় থেকে আনুমানিক finish time ও remaining time হিসাব করা হয়। এটি estimate, guarantee নয়; প্রতিটি নতুন step শেষ হলে হিসাব update হয়।
+- **Expected Finish:** সম্পন্ন action-গুলোর সংরক্ষিত measured duration থেকে আনুমানিক finish time ও remaining time হিসাব করা হয়। Retry-এর শুরুতে নতুন attempt-এর timing sample না থাকলে সর্বশেষ completed attempt-এর sample ব্যবহার হয়। এটি estimate, guarantee নয়; প্রতিটি নতুন action শেষ হলে হিসাব update হয়।
 - **Action Timeline:** প্রতিটি action-এর নাম, record number, step number, retry attempt, running/completed/failed/cancelled status এবং measured duration।
 - **Retry visibility:** কোনো attempt ব্যর্থ হলে সেই attempt-এর failed action timeline-এ থাকে; পরের retry নতুন attempt হিসেবে দেখানো হয় এবং live progress আবার শূন্য থেকে গণনা শুরু করে।
 

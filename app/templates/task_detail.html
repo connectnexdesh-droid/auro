@@ -142,6 +142,7 @@
           <span class="progress-fill" data-progress-fill style="width: {{ progress_percent }}%"></span>
         </div>
         <div class="run-progress-stats">
+          <span>Elapsed <strong data-progress-elapsed>{{ elapsed_display_by_run[run.id] }}</strong></span>
           <span>Current action <strong data-progress-action>{{ progress.get("current_action", "—") }}</strong></span>
           <span>ETA <strong data-progress-eta>{% if run.status == "running" %}Calculating…{% elif run.status in ["completed", "success"] %}Finished{% else %}—{% endif %}</strong></span>
         </div>

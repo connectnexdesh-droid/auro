@@ -16,6 +16,7 @@ import re
 import uuid
 
 from datetime import datetime, timedelta, timezone
+from math import ceil
 
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -154,6 +155,44 @@ def _task_or_404(name: str) -> TaskRecord:
         raise HTTPException(status_code=404, detail="Task not found.")
 
     return task
+
+
+def _elapsed_seconds(
+    started_at_value: str,
+    finished_at_value: str | None,
+    *,
+    now: datetime | None = None,
+) -> float:
+    """Calculate wall-clock run duration, including active runs."""
+    current = now or datetime.now(timezone.utc)
+    try:
+        started_at = datetime.fromisoformat(started_at_value)
+        if started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=timezone.utc)
+
+        finished_at = (
+            datetime.fromisoformat(finished_at_value)
+            if finished_at_value
+            else current
+        )
+        if finished_at.tzinfo is None:
+            finished_at = finished_at.replace(tzinfo=timezone.utc)
+
+        return max(0.0, (finished_at - started_at).total_seconds())
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _format_duration(seconds: float) -> str:
+    """Format elapsed seconds consistently with the dashboard clock."""
+    total = max(0, int(seconds))
+    hours, remainder = divmod(total, 3600)
+    minutes, seconds_remainder = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h {minutes}m"
+    if minutes:
+        return f"{minutes}m {seconds_remainder}s"
+    return f"{seconds_remainder}s"
 
 
 def _save_task_definition(
@@ -379,6 +418,13 @@ async def task_detail(request: Request, name: str):
     screenshots_by_run: dict[str, list[dict[str, str]]] = {}
     steps_by_run: dict[str, list[dict[str, object]]] = {}
     progress_by_run: dict[str, dict[str, object]] = {}
+    now = datetime.now(timezone.utc)
+    elapsed_display_by_run = {
+        run.id: _format_duration(
+            _elapsed_seconds(run.started_at, run.finished_at, now=now)
+        )
+        for run in runs
+    }
 
     for run in runs:
         logs_by_run[run.id] = database.get_run_logs(run.id, limit=200)
@@ -400,6 +446,7 @@ async def task_detail(request: Request, name: str):
             "screenshots_by_run": screenshots_by_run,
             "steps_by_run": steps_by_run,
             "progress_by_run": progress_by_run,
+            "elapsed_display_by_run": elapsed_display_by_run,
             "page_title": f"Task: {name}",
         },
     )
@@ -507,32 +554,49 @@ async def task_run_status(name: str, run_id: str):
     completed_steps = int(progress.get("completed_steps", 0))
     now = datetime.now(timezone.utc)
 
-    try:
-        started_at = datetime.fromisoformat(run.started_at)
-        if started_at.tzinfo is None:
-            started_at = started_at.replace(tzinfo=timezone.utc)
-        finished_at = (
-            datetime.fromisoformat(run.finished_at)
-            if run.finished_at
-            else None
-        )
-        if finished_at is not None and finished_at.tzinfo is None:
-            finished_at = finished_at.replace(tzinfo=timezone.utc)
-        elapsed_seconds = max(
-            0.0,
-            ((finished_at or now) - started_at).total_seconds(),
-        )
-    except (TypeError, ValueError):
-        elapsed_seconds = 0.0
+    elapsed_seconds = _elapsed_seconds(
+        run.started_at,
+        run.finished_at,
+        now=now,
+    )
+
+    timeline = database.get_run_steps(run_id, limit=2000)
+    current_attempt = int(progress.get("attempt", 1))
+    duration_samples = [
+        int(step["duration_ms"])
+        for step in timeline
+        if int(step.get("attempt", 1)) == current_attempt
+        and step.get("status") == "completed"
+        and step.get("duration_ms") is not None
+    ]
+
+    # At the start of a retry there may not be completed actions in the
+    # current attempt yet. Use the most recent earlier attempt with samples.
+    if not duration_samples:
+        completed_attempts = [
+            int(step.get("attempt", 1))
+            for step in timeline
+            if step.get("status") == "completed"
+            and step.get("duration_ms") is not None
+        ]
+        if completed_attempts:
+            latest_completed_attempt = max(completed_attempts)
+            duration_samples = [
+                int(step["duration_ms"])
+                for step in timeline
+                if int(step.get("attempt", 1)) == latest_completed_attempt
+                and step.get("status") == "completed"
+                and step.get("duration_ms") is not None
+            ]
 
     estimated_remaining_seconds: int | None = None
     expected_finish_at: str | None = None
-    if run.status == "running" and total_steps > 0 and completed_steps > 0:
+    if run.status == "running" and total_steps > 0 and duration_samples:
         remaining_steps = max(0, total_steps - completed_steps)
-        average_step_seconds = elapsed_seconds / completed_steps
+        average_step_ms = sum(duration_samples) / len(duration_samples)
         estimated_remaining_seconds = max(
             0,
-            int(round(average_step_seconds * remaining_steps)),
+            int(ceil(average_step_ms * remaining_steps / 1000)),
         )
         expected_finish_at = (
             now + timedelta(seconds=estimated_remaining_seconds)
@@ -545,8 +609,6 @@ async def task_run_status(name: str, run_id: str):
         if total_steps > 0
         else 0
     )
-
-    timeline = database.get_run_steps(run_id, limit=2000)
 
     return {
         "id": run.id,

@@ -227,6 +227,69 @@ def test_run_status_logs_and_screenshot_gallery(app_client, monkeypatch: pytest.
     assert image_response.status_code == 200
     assert image_response.headers["content-type"].startswith("image/png")
 
+    detail = client.get("/task/demo_form")
+    assert detail.status_code == 200
+    assert "Elapsed" in detail.text
+    assert "data-progress-elapsed" in detail.text
+
+
+def test_running_eta_uses_measured_action_durations_and_retry_fallback(app_client) -> None:
+    client, main_module, _ = app_client
+    database = main_module.database
+    run_id = database.create_run("demo_form")
+
+    database.initialize_run_progress(
+        run_id,
+        total_steps=4,
+        total_records=1,
+    )
+    database.reset_run_progress(run_id, 1)
+
+    for index, duration_ms in enumerate((2000, 4000), start=1):
+        step_id = database.start_run_step(
+            run_id,
+            attempt=1,
+            record_index=1,
+            step_index=index,
+            global_step=index,
+            action="click",
+        )
+        database.finish_run_step(
+            step_id,
+            status="completed",
+            duration_ms=duration_ms,
+            completed_steps=index,
+        )
+
+    # A retry resets progress. ETA should fall back to the last attempt's
+    # measured action durations instead of dividing total elapsed time.
+    database.reset_run_progress(run_id, 2)
+    status = client.get(f"/task/demo_form/status/{run_id}").json()
+    assert status["attempt"] == 2
+    assert status["completed_steps"] == 0
+    assert status["estimated_remaining_seconds"] == 12
+    assert status["expected_finish_at"] is not None
+
+    # Once the new attempt completes an action, its own measurements take
+    # precedence over the previous attempt's timing samples.
+    step_id = database.start_run_step(
+        run_id,
+        attempt=2,
+        record_index=1,
+        step_index=1,
+        global_step=1,
+        action="goto",
+    )
+    database.finish_run_step(
+        step_id,
+        status="completed",
+        duration_ms=5000,
+        completed_steps=1,
+    )
+    status = client.get(f"/task/demo_form/status/{run_id}").json()
+    assert status["completed_steps"] == 1
+    assert status["estimated_remaining_seconds"] == 15
+
 
 def test_stop_request_cancels_a_queued_run(app_client) -> None:
     client, main_module, tmp_path = app_client
