@@ -62,6 +62,8 @@ jobs:
         run: |
           $browserPath = Join-Path $env:GITHUB_WORKSPACE ".playwright-browsers"
           New-Item -ItemType Directory -Force -Path $browserPath | Out-Null
+          $env:PLAYWRIGHT_BROWSERS_PATH = $browserPath
+          $env:AURO_BUILD_BROWSERS_PATH = $browserPath
           "PLAYWRIGHT_BROWSERS_PATH=$browserPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "AURO_BUILD_BROWSERS_PATH=$browserPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           python -m playwright install chromium
