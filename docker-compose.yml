@@ -17,11 +17,9 @@ services:
       # A container has no desktop display; run Chrome headlessly by default.
       AUTOMATION_HEADLESS: "true"
 
-      # These can be changed from the Settings page and stored in SQLite.
-      AUTOMATION_TIMEOUT_MS: "30000"
-      AUTOMATION_DELAY_MIN_MS: "500"
-      AUTOMATION_DELAY_MAX_MS: "2000"
-      AUTOMATION_RETRY: "2"
+      # Timeout, delay and retry use SQLite defaults and can be changed
+      # from the dashboard Settings page. Environment variables, if added,
+      # take priority over the values stored in SQLite.
     volumes:
       # Persist task definitions and dashboard edits across image rebuilds.
       - ./app/tasks:/workspace/app/tasks
