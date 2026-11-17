@@ -30,8 +30,9 @@ steps:
     selector: "button:has-text('Sign Up')"
     state: visible
 
+  # This screenshot is taken before any personal details are entered.
   - action: screenshot
-    name: "meta-signup-form"
+    name: "blank-meta-signup-form"
     full_page: true
 
   # Manual checkpoint: enter your own details and submit the form.
@@ -39,23 +40,11 @@ steps:
     selector: "button:has-text('Sign Up')"
     state: hidden
 
-  - action: screenshot
-    name: "after-signup-submit"
-    full_page: true
-
   # Manual checkpoint: complete email verification in the visible browser.
   - action: wait_for
     selector: "input[autocomplete='one-time-code'], input[name='code'], input[name='confirmation_code'], input[aria-label*='code' i], input[placeholder*='code' i]"
     state: visible
 
-  - action: screenshot
-    name: "email-verification"
-    full_page: true
-
   - action: wait_for
     selector: "input[autocomplete='one-time-code'], input[name='code'], input[name='confirmation_code'], input[aria-label*='code' i], input[placeholder*='code' i]"
     state: hidden
-
-  - action: screenshot
-    name: "registration-checkpoint"
-    full_page: true
