@@ -456,7 +456,53 @@ python tests/dashboard_browser_smoke.py
 
 ফলাফল দেখতে Repository-এর **Actions** tab খুলুন। Screenshot artifact সফল CI run-এর সঙ্গে ৭ দিন রাখা হয়।
 
-## ১২. Troubleshooting
+## ১২. Windows Desktop Application
+
+AURO-এর Windows Desktop version একই FastAPI Dashboard-কে একটি native Windows window-এর মধ্যে চালায়। আলাদা terminal, Codespaces, Docker বা system Google Chrome install করে Dashboard চালু করতে হয় না।
+
+### Desktop build কীভাবে পাওয়া যাবে
+
+GitHub Actions workflow:
+
+\`.github/workflows/windows-desktop.yml\`
+
+Workflow Windows runner-এ:
+
+1. Python 3.12 ও desktop dependencies install করে।
+2. Playwright-এর matching Chromium browser bundle করে।
+3. PyInstaller দিয়ে AURO desktop application তৈরি করে।
+4. Packaged executable চালিয়ে Dashboard, local server ও bundled browser smoke-test করে।
+5. Inno Setup দিয়ে Windows installer তৈরি করে।
+6. Installer ও portable ZIP GitHub Actions artifact হিসেবে প্রকাশ করে।
+
+Repository-এর **Actions → AURO Windows Desktop** থেকে সর্বশেষ successful run খুলে **Artifacts** অংশ থেকে নিচের ফাইলগুলো পাওয়া যাবে:
+
+- \`AURO-Setup-0.1.0.exe\` — installer; Start Menu ও Desktop Shortcut তৈরি করে।
+- \`AURO-Portable.zip\` — install ছাড়াই extract করে \`AURO.exe\` চালানোর package।
+
+### Data ও update
+
+Desktop application-এর user data Windows-এর \`%LOCALAPPDATA%\\AURO\\\` directory-তে রাখা হয়:
+
+- \`data/automation.db\` — settings, run history, logs ও progress
+- \`tasks/\` — user-created YAML workflows
+- \`screenshots/\` — workflow screenshots
+- \`sessions/\` — saved browser sessions
+- \`logs/\` — desktop application log
+
+Installer update বা uninstall করলে এই user data directory মুছে ফেলা হয় না। নতুন version install করার পর আগের workflows ও history পাওয়া যাবে।
+
+### Browser ও security
+
+Desktop build-এর সঙ্গে Playwright-compatible Chromium bundle করা হয়; আলাদা Google Chrome install বাধ্যতামূলক নয়। Settings থেকে Headless Browser চালু/বন্ধ করা যাবে।
+
+Desktop server কেবল \`127.0.0.1\` loopback interface-এ bind করে। এটি LAN বা Public Internet-এ listen করে না। AURO Dashboard-এ এখনো account login নেই, তাই desktop app-এর local-only binding পরিবর্তন করবেন না।
+
+Installer বর্তমানে code-signed নয়। Windows SmartScreen প্রথমবার চালুর সময় publisher verification warning দেখাতে পারে; এটি build failure নয়।
+
+---
+
+## ১৩. Troubleshooting
 
 ### Chrome not found
 

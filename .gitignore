@@ -45,7 +45,9 @@ Thumbs.db
 .idea/
 .vscode/
 
-# Build output
+# Build output and bundled browser cache
 dist/
 build/
 *.egg-info/
+.playwright-browsers/
+desktop/assets/auro.ico
