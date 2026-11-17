@@ -23,6 +23,8 @@ services:
       AUTOMATION_DELAY_MAX_MS: "2000"
       AUTOMATION_RETRY: "2"
     volumes:
+      # Persist task definitions and dashboard edits across image rebuilds.
+      - ./app/tasks:/workspace/app/tasks
       - ./data:/workspace/data
       - ./screenshots:/workspace/screenshots
       - ./sessions:/workspace/sessions
