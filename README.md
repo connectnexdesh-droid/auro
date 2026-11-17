@@ -142,7 +142,15 @@ Task detail page খুলে YAML editor-এ পরিবর্তন করু
 3. **Run task** চাপুন।
 4. Run status, logs ও screenshots দেখুন।
 
-Dashboard JavaScript প্রতি ২ সেকেন্ডে run status poll করে। চলমান run-এর জন্য Stop control-ও আছে।
+চলমান run-এর detail page-এ এখন live execution monitoring পাওয়া যায়:
+
+- **Live Progress:** মোট workflow step-এর মধ্যে কতটি শেষ হয়েছে এবং বর্তমানে কোন step চলছে।
+- **Elapsed Time:** run শুরু হওয়ার পর থেকে কেটে যাওয়া সময়।
+- **Expected Finish:** অন্তত একটি step শেষ হলে completed step-এর গড় সময় থেকে আনুমানিক finish time ও remaining time হিসাব করা হয়। এটি estimate, guarantee নয়; প্রতিটি নতুন step শেষ হলে হিসাব update হয়।
+- **Action Timeline:** প্রতিটি action-এর নাম, record number, step number, retry attempt, running/completed/failed/cancelled status এবং measured duration।
+- **Retry visibility:** কোনো attempt ব্যর্থ হলে সেই attempt-এর failed action timeline-এ থাকে; পরের retry নতুন attempt হিসেবে দেখানো হয় এবং live progress আবার শূন্য থেকে গণনা শুরু করে।
+
+Dashboard JavaScript প্রতি ২ সেকেন্ডে run status, progress, timeline, logs ও screenshots poll করে। চলমান run-এর জন্য Stop control-ও আছে।
 
 ### Settings
 
@@ -433,7 +441,7 @@ CI-তে:
 4. Python compile/syntax check
 5. pytest suite — runner unit tests ও Dashboard/API integration tests
 6. Selenium demo form-এর headless browser smoke test
-7. Real-browser Dashboard E2E — CSV upload, Settings, Task creation, Run, Stop, Logs ও Screenshot Gallery
+7. Real-browser Dashboard E2E — CSV upload, Settings, Task creation, Run, Stop, live progress, ETA, Action Timeline, Logs ও Screenshot Gallery
 8. Screenshot artifact upload
 9. Docker Compose config validation
 10. Docker image build
