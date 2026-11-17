@@ -210,7 +210,7 @@ def load_task(task_path: str | Path) -> dict[str, Any]:
         step = _require_mapping(raw_step, f"Step {index}")
         action = step.get("action")
 
-        if action not in ALLOWED_ACTIONS:
+        if not isinstance(action, str) or action not in ALLOWED_ACTIONS:
             allowed = ", ".join(sorted(ALLOWED_ACTIONS))
             raise TaskValidationError(
                 f"Step {index}: unsupported action {action!r}. "
@@ -855,6 +855,11 @@ async def run_task(
     )
 
     try:
+        if delay_min_ms > delay_max_ms:
+            raise ValueError(
+                "Task delay minimum cannot exceed the configured maximum delay."
+            )
+
         for attempt in range(1, retry_count + 2):
             attempts_used = attempt
             _record_log(
