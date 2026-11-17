@@ -147,6 +147,100 @@ def _task_or_404(name: str):
     return task
 
 
+def _save_task_definition(
+    name: str,
+    yaml_content: str,
+    existing_path: str | None = None,
+):
+    """
+    Validate and atomically save a YAML task definition.
+
+    Task files are restricted to the configured tasks directory. The
+    runner's schema validator is reused so the dashboard cannot save a
+    task that the execution engine would reject.
+    """
+
+    if not TASK_NAME_RE.fullmatch(name):
+        raise HTTPException(
+            status_code=422,
+            detail="Task name must use letters, numbers, underscores, or hyphens.",
+        )
+
+    if not yaml_content.strip():
+        raise HTTPException(status_code=422, detail="YAML content cannot be empty.")
+
+    if len(yaml_content.encode("utf-8")) > 128 * 1024:
+        raise HTTPException(status_code=413, detail="Task YAML is limited to 128 KB.")
+
+    settings = load_settings()
+    settings.tasks_dir.mkdir(parents=True, exist_ok=True)
+
+    if existing_path is not None:
+        target = Path(existing_path).resolve()
+        if target.parent != settings.tasks_dir.resolve():
+            raise HTTPException(
+                status_code=400,
+                detail="Task file is outside the configured tasks directory.",
+            )
+        if target.suffix.lower() not in {".yaml", ".yml"}:
+            raise HTTPException(status_code=400, detail="Invalid task file extension.")
+    else:
+        target = (settings.tasks_dir / f"{name}.yaml").resolve()
+        if target.exists():
+            raise HTTPException(
+                status_code=409,
+                detail=f"A task named {name!r} already exists.",
+            )
+
+    temporary_path = settings.tasks_dir / f".{name}.{uuid.uuid4().hex}.tmp.yaml"
+
+    try:
+        temporary_path.write_text(yaml_content, encoding="utf-8")
+        validated_task = load_task(temporary_path)
+
+        if validated_task["name"] != name:
+            raise HTTPException(
+                status_code=422,
+                detail="The YAML task name must match the requested task name.",
+            )
+
+        temporary_path.replace(target)
+        return database.register_task(name, target)
+
+    except HTTPException:
+        raise
+    except (TaskValidationError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
+@app.post("/tasks/create")
+async def create_task(
+    name: str = Form(...),
+    yaml_content: str = Form(...),
+):
+    """Create a new YAML task from the dashboard task editor."""
+
+    if database.get_task(name) is not None:
+        raise HTTPException(status_code=409, detail="Task already exists.")
+
+    task = _save_task_definition(name, yaml_content)
+    return RedirectResponse(url=f"/task/{task.name}", status_code=303)
+
+
+@app.post("/task/{name}/edit")
+async def edit_task(
+    name: str,
+    yaml_content: str = Form(...),
+):
+    """Validate and replace an existing task's YAML definition."""
+
+    task = _task_or_404(name)
+    _save_task_definition(name, yaml_content, existing_path=task.path)
+    return RedirectResponse(url=f"/task/{name}", status_code=303)
+
+
 def _uploaded_input_path(filename: str) -> Path:
     """Resolve an uploaded data filename without allowing path traversal."""
 
@@ -249,6 +343,9 @@ async def task_detail(request: Request, name: str):
         name="task_detail.html",
         context={
             "task": task,
+            "task_yaml": Path(task.path).read_text(encoding="utf-8")
+            if Path(task.path).is_file()
+            else "",
             "runs": runs,
             "logs_by_run": logs_by_run,
             "screenshots_by_run": screenshots_by_run,
