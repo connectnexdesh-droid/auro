@@ -52,6 +52,11 @@ jobs:
       - name: Generate AURO application icon
         run: python desktop/create_icon.py
 
+      - name: Run Python tests and compile checks
+        run: |
+          python -m compileall -q app desktop tests
+          python -m pytest -q tests/ -k "not demo_form_runs_headless_and_produces_screenshot"
+
       - name: Install bundled Playwright Chromium
         shell: pwsh
         run: |

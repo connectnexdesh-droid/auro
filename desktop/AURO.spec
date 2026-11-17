@@ -6,8 +6,11 @@ from pathlib import Path
 from PyInstaller.utils.hooks import collect_all
 
 
-ROOT = Path(SPECPATH).resolve().parent.parent
-BROWSER_PATH = Path(os.environ.get("AURO_BUILD_BROWSERS_PATH", ""))
+ROOT = Path.cwd().resolve()
+BROWSER_PATH_VALUE = os.environ.get("AURO_BUILD_BROWSERS_PATH")
+if not BROWSER_PATH_VALUE:
+    raise RuntimeError("AURO_BUILD_BROWSERS_PATH is not set.")
+BROWSER_PATH = Path(BROWSER_PATH_VALUE).resolve()
 
 if not BROWSER_PATH.is_dir():
     raise RuntimeError(
