@@ -77,10 +77,15 @@ jobs:
           if (-not (Test-Path "dist\AURO\AURO.exe")) {
             throw "PyInstaller did not produce dist\AURO\AURO.exe"
           }
-          & "dist\AURO\AURO.exe" --smoke-test
-          if ($LASTEXITCODE -ne 0) {
-            throw "The packaged AURO smoke test failed with exit code $LASTEXITCODE"
+          $smoke = Start-Process -FilePath "dist\AURO\AURO.exe" -ArgumentList "--smoke-test" -PassThru -Wait -WindowStyle Hidden
+          if ($smoke.ExitCode -ne 0) {
+            $log = Join-Path $env:LOCALAPPDATA "AURO\logs\auro-desktop.log"
+            if (Test-Path $log) {
+              Get-Content $log -Tail 200
+            }
+            throw "The packaged AURO smoke test failed with exit code $($smoke.ExitCode)"
           }
+          Write-Host "Packaged AURO smoke test passed."
 
       - name: Create portable ZIP
         shell: pwsh
