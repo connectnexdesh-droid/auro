@@ -39,7 +39,19 @@
         <span class="status-badge status-running" data-active-status>Running</span>
         <span class="mono-text" data-active-run-id></span>
       </div>
-      <div class="progress-track"><span class="progress-indeterminate"></span></div>
+      <div class="run-progress-panel">
+        <div class="run-progress-heading">
+          <span data-active-step-label>Preparing workflow…</span>
+          <strong data-active-progress-percent>0%</strong>
+        </div>
+        <div class="progress-track">
+          <span class="progress-fill" data-active-progress-fill style="width: 0%"></span>
+        </div>
+        <div class="run-progress-stats">
+          <span>Elapsed <strong data-active-elapsed>00:00</strong></span>
+          <span>Expected finish <strong data-active-eta>Calculating…</strong></span>
+        </div>
+      </div>
       <div class="active-run-actions">
         <span class="helper-text" data-active-run-message>Chrome workflow is running.</span>
         <button class="button button-danger button-small" type="button" data-stop-run disabled>Stop run</button>
@@ -108,6 +120,54 @@
       {% else %}
       <div class="error-box" data-run-error hidden></div>
       {% endif %}
+
+      {% set progress = progress_by_run[run.id] %}
+      {% set total_steps = progress.get("total_steps", 0) %}
+      {% set completed_steps = progress.get("completed_steps", 0) %}
+      {% if run.status in ["completed", "success"] %}
+        {% set progress_percent = 100 %}
+      {% elif total_steps > 0 %}
+        {% set progress_percent = (completed_steps * 100 // total_steps) %}
+      {% else %}
+        {% set progress_percent = 0 %}
+      {% endif %}
+      <section class="run-progress-panel history-progress-panel">
+        <div class="run-progress-heading">
+          <span data-progress-label>
+            {% if total_steps %}{{ completed_steps }} / {{ total_steps }} steps completed{% else %}Progress details unavailable for this run{% endif %}
+          </span>
+          <strong data-progress-percent>{{ progress_percent }}%</strong>
+        </div>
+        <div class="progress-track">
+          <span class="progress-fill" data-progress-fill style="width: {{ progress_percent }}%"></span>
+        </div>
+        <div class="run-progress-stats">
+          <span>Current action <strong data-progress-action>{{ progress.get("current_action", "—") }}</strong></span>
+          <span>ETA <strong data-progress-eta>{% if run.status == "running" %}Calculating…{% elif run.status in ["completed", "success"] %}Finished{% else %}—{% endif %}</strong></span>
+        </div>
+      </section>
+
+      <section class="timeline-section">
+        <div class="mini-heading">ACTION TIMELINE <span data-timeline-count>{{ steps_by_run[run.id]|length }} actions</span></div>
+        <div class="action-timeline" data-run-timeline>
+          {% for step in steps_by_run[run.id] %}
+          <div class="timeline-item timeline-{{ step.status }}" data-step-id="{{ step.id }}">
+            <span class="timeline-marker"></span>
+            <div class="timeline-copy">
+              <strong>{{ step.action|upper }}</strong>
+              <small>Attempt {{ step.attempt }} · Record {{ step.record_index }} · Step {{ step.step_index }}</small>
+              {% if step.error %}<small class="timeline-error">{{ step.error }}</small>{% endif %}
+            </div>
+            <span class="timeline-result">
+              {% if step.duration_ms is not none %}{{ "%.1f"|format(step.duration_ms / 1000) }}s{% else %}{{ step.status }}{% endif %}
+            </span>
+          </div>
+          {% else %}
+          <div class="empty-inline">Step timeline is available for runs started after this update.</div>
+          {% endfor %}
+        </div>
+      </section>
+
       <div class="run-observability-grid">
         <section class="log-section">
           <div class="mini-heading">EXECUTION LOG</div>
