@@ -37,6 +37,7 @@ from app.config import (
     ensure_runtime_directories,
     load_settings,
 )
+from app.models import TaskRecord
 from app.runner import TaskValidationError, load_task, safe_filename, run_task
 
 
@@ -128,7 +129,7 @@ app.mount(
 )
 
 
-def _task_or_404(name: str):
+def _task_or_404(name: str) -> TaskRecord:
     """Return a registered task or raise a consistent 404 response."""
 
     if not TASK_NAME_RE.fullmatch(name):
@@ -151,7 +152,7 @@ def _save_task_definition(
     name: str,
     yaml_content: str,
     existing_path: str | None = None,
-):
+) -> TaskRecord:
     """
     Validate and atomically save a YAML task definition.
 
