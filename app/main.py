@@ -15,6 +15,8 @@ import logging
 import re
 import uuid
 
+from datetime import datetime, timedelta, timezone
+
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -375,10 +377,14 @@ async def task_detail(request: Request, name: str):
 
     logs_by_run: dict[str, list[Any]] = {}
     screenshots_by_run: dict[str, list[dict[str, str]]] = {}
+    steps_by_run: dict[str, list[dict[str, object]]] = {}
+    progress_by_run: dict[str, dict[str, object]] = {}
 
     for run in runs:
         logs_by_run[run.id] = database.get_run_logs(run.id, limit=200)
         screenshots_by_run[run.id] = _list_run_screenshots(name, run.id)
+        steps_by_run[run.id] = database.get_run_steps(run.id, limit=2000)
+        progress_by_run[run.id] = database.get_run_progress(run.id) or {}
 
     return templates.TemplateResponse(
         request=request,
@@ -392,6 +398,8 @@ async def task_detail(request: Request, name: str):
             "runs": runs,
             "logs_by_run": logs_by_run,
             "screenshots_by_run": screenshots_by_run,
+            "steps_by_run": steps_by_run,
+            "progress_by_run": progress_by_run,
             "page_title": f"Task: {name}",
         },
     )
@@ -494,6 +502,52 @@ async def task_run_status(name: str, run_id: str):
     if run is None or run.task_name != name:
         raise HTTPException(status_code=404, detail="Run not found.")
 
+    progress = database.get_run_progress(run_id) or {}
+    total_steps = int(progress.get("total_steps", 0))
+    completed_steps = int(progress.get("completed_steps", 0))
+    now = datetime.now(timezone.utc)
+
+    try:
+        started_at = datetime.fromisoformat(run.started_at)
+        if started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=timezone.utc)
+        finished_at = (
+            datetime.fromisoformat(run.finished_at)
+            if run.finished_at
+            else None
+        )
+        if finished_at is not None and finished_at.tzinfo is None:
+            finished_at = finished_at.replace(tzinfo=timezone.utc)
+        elapsed_seconds = max(
+            0.0,
+            ((finished_at or now) - started_at).total_seconds(),
+        )
+    except (TypeError, ValueError):
+        elapsed_seconds = 0.0
+
+    estimated_remaining_seconds: int | None = None
+    expected_finish_at: str | None = None
+    if run.status == "running" and total_steps > 0 and completed_steps > 0:
+        remaining_steps = max(0, total_steps - completed_steps)
+        average_step_seconds = elapsed_seconds / completed_steps
+        estimated_remaining_seconds = max(
+            0,
+            int(round(average_step_seconds * remaining_steps)),
+        )
+        expected_finish_at = (
+            now + timedelta(seconds=estimated_remaining_seconds)
+        ).isoformat(timespec="seconds")
+
+    progress_percent = (
+        100
+        if run.status in {"completed", "success"}
+        else min(100, int(round(completed_steps / total_steps * 100)))
+        if total_steps > 0
+        else 0
+    )
+
+    timeline = database.get_run_steps(run_id, limit=2000)
+
     return {
         "id": run.id,
         "task_name": run.task_name,
@@ -501,6 +555,22 @@ async def task_run_status(name: str, run_id: str):
         "started_at": run.started_at,
         "finished_at": run.finished_at,
         "error": run.error,
+        "total_steps": total_steps,
+        "completed_steps": completed_steps,
+        "current_step": int(progress.get("current_step", 0)),
+        "current_action": (
+            str(progress.get("current_action") or "Preparing workflow")
+            if run.status == "running"
+            else run.status.title()
+        ),
+        "record_index": int(progress.get("record_index", 0)),
+        "total_records": int(progress.get("total_records", 0)),
+        "attempt": int(progress.get("attempt", 1)),
+        "progress_percent": progress_percent,
+        "elapsed_seconds": round(elapsed_seconds, 1),
+        "estimated_remaining_seconds": estimated_remaining_seconds,
+        "expected_finish_at": expected_finish_at,
+        "timeline": timeline,
     }
 
 
