@@ -164,7 +164,7 @@ Repository-তে `app/tasks/demo_form.yaml` দেওয়া আছে:
 ```yaml
 name: demo_form
 description: "Fill and submit the public Selenium demo form."
-headless: false
+headless: true
 timeout_ms: 30000
 retry: 2
 
