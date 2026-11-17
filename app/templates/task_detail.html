@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="page-heading">
+  <div>
+    <a class="back-link" href="/">← Back to dashboard</a>
+    <div class="eyebrow">WORKFLOW DETAIL</div>
+    <h1>{{ task.name }}</h1>
+    <p class="page-subtitle">{{ task_yaml.split('\n')[1] if task_yaml.split('\n')|length > 1 else "YAML automation workflow" }}</p>
+  </div>
+  <span class="status-badge status-{{ (task.last_run_status or 'idle')|lower }}">{{ task.last_run_status or "Not run" }}</span>
+</section>
+
+<section class="detail-grid">
+  <div class="panel run-panel">
+    <div class="panel-heading">
+      <div>
+        <div class="eyebrow">EXECUTION</div>
+        <h2>Run workflow</h2>
+      </div>
+      <span class="panel-icon">▶</span>
+    </div>
+    <p class="panel-description">Launch this YAML task in a new Chrome session. An input file is optional.</p>
+    <form class="run-launch-form" action="/task/{{ task.name }}/run" method="post" data-run-form data-task-name="{{ task.name }}" data-detail-run-form>
+      <label class="field-label" for="run-input-file">Input data file</label>
+      <select id="run-input-file" class="text-input" name="input_filename">
+        <option value="">No input file</option>
+        {% for filename in uploaded_files %}
+        <option value="{{ filename }}">{{ filename }}</option>
+        {% endfor %}
+      </select>
+      <div class="form-actions">
+        <button class="button button-primary" type="submit">Start automation <span aria-hidden="true">▶</span></button>
+        <span class="helper-text">A new run record is saved to SQLite.</span>
+      </div>
+    </form>
+    <div class="active-run-box" data-active-run hidden>
+      <div class="active-run-top">
+        <span class="status-badge status-running" data-active-status>Running</span>
+        <span class="mono-text" data-active-run-id></span>
+      </div>
+      <div class="progress-track"><span class="progress-indeterminate"></span></div>
+      <div class="active-run-actions">
+        <span class="helper-text" data-active-run-message>Chrome workflow is running.</span>
+        <button class="button button-danger button-small" type="button" data-stop-run disabled>Stop run</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel task-info-panel">
+    <div class="panel-heading">
+      <div>
+        <div class="eyebrow">TASK INFORMATION</div>
+        <h2>Configuration</h2>
+      </div>
+      <span class="panel-icon">⌘</span>
+    </div>
+    <dl class="info-list">
+      <div><dt>Task file</dt><dd class="mono-text">{{ task.path }}</dd></div>
+      <div><dt>Last run</dt><dd>{{ task.last_run_at or "Never" }}</dd></div>
+      <div><dt>Last status</dt><dd>{{ task.last_run_status or "Not run" }}</dd></div>
+      <div><dt>Task ID</dt><dd class="mono-text">{{ task.id }}</dd></div>
+    </dl>
+  </div>
+</section>
+
+<section class="panel editor-panel">
+  <div class="panel-heading">
+    <div>
+      <div class="eyebrow">TASK DEFINITION</div>
+      <h2>Edit YAML</h2>
+      <p class="panel-description">Changes are validated before the task file is replaced.</p>
+    </div>
+  </div>
+  <form action="/task/{{ task.name }}/edit" method="post" class="task-create-form">
+    <label class="field-label" for="task-yaml">YAML definition</label>
+    <textarea id="task-yaml" name="yaml_content" class="code-editor" rows="18" spellcheck="false" required>{{ task_yaml }}</textarea>
+    <div class="form-actions">
+      <span class="helper-text">Keep the YAML name as <code>{{ task.name }}</code>.</span>
+      <button class="button button-secondary" type="submit">Save changes</button>
+    </div>
+  </form>
+</section>
+
+<section class="panel history-panel">
+  <div class="panel-heading">
+    <div>
+      <div class="eyebrow">OBSERVABILITY</div>
+      <h2>Run history</h2>
+      <p class="panel-description">Recent runs, live logs, and captured screenshots.</p>
+    </div>
+    <span class="count-pill">{{ runs|length }} recent</span>
+  </div>
+
+  {% if runs %}
+    {% for run in runs %}
+    <article class="run-history-card" data-run-card data-task-name="{{ task.name }}" data-run-id="{{ run.id }}" data-run-status="{{ run.status }}">
+      <div class="run-history-header">
+        <div class="run-history-main">
+          <span class="status-badge status-{{ run.status|lower }}" data-run-status-badge>{{ run.status }}</span>
+          <span class="mono-text run-id">{{ run.id }}</span>
+          <span class="muted-cell">{{ run.started_at }}</span>
+        </div>
+        <span class="muted-cell">{{ run.finished_at or "In progress" }}</span>
+      </div>
+      {% if run.error %}
+      <div class="error-box" data-run-error>{{ run.error }}</div>
+      {% else %}
+      <div class="error-box" data-run-error hidden></div>
+      {% endif %}
+      <div class="run-observability-grid">
+        <section class="log-section">
+          <div class="mini-heading">EXECUTION LOG</div>
+          <div class="log-list" data-run-logs id="logs-{{ run.id }}">
+            {% for entry in logs_by_run[run.id] %}
+            <div class="log-entry">
+              <time>{{ entry.created_at }}</time>
+              <span class="log-level log-{{ entry.level|lower }}">{{ entry.level }}</span>
+              <span class="log-message">{{ entry.message }}</span>
+            </div>
+            {% else %}
+            <div class="empty-inline">No log entries yet.</div>
+            {% endfor %}
+          </div>
+        </section>
+        <section class="screenshot-section">
+          <div class="mini-heading">SCREENSHOTS</div>
+          <div class="screenshot-grid" data-run-screenshots>
+            {% for shot in screenshots_by_run[run.id] %}
+            <a class="screenshot-thumb" href="{{ shot.url }}" target="_blank" rel="noopener noreferrer">
+              <img src="{{ shot.url }}" alt="Screenshot {{ shot.filename }}" loading="lazy">
+              <span>{{ shot.filename }}</span>
+            </a>
+            {% else %}
+            <div class="empty-inline">No screenshots captured.</div>
+            {% endfor %}
+          </div>
+        </section>
+      </div>
+    </article>
+    {% endfor %}
+  {% else %}
+  <div class="empty-state compact-empty">
+    <div class="empty-icon">◷</div>
+    <h3>No runs recorded</h3>
+    <p>Start this workflow to see its execution history here.</p>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}
