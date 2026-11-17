@@ -57,6 +57,138 @@
     container.scrollTop = container.scrollHeight;
   }
 
+  function formatDuration(seconds) {
+    const total = Math.max(0, Math.floor(Number(seconds) || 0));
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const remainder = total % 60;
+
+    if (hours) return hours + "h " + minutes + "m";
+    if (minutes) return minutes + "m " + remainder + "s";
+    return remainder + "s";
+  }
+
+  function formatExpectedFinish(timestamp) {
+    if (!timestamp) return "Calculating…";
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return "Calculating…";
+    return date.toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit"
+    });
+  }
+
+  function renderProgressTarget(status, target) {
+    if (!target) return;
+
+    const total = Math.max(0, Number(status.total_steps) || 0);
+    const completed = Math.max(0, Number(status.completed_steps) || 0);
+    const current = Math.max(0, Number(status.current_step) || 0);
+    const action = String(status.current_action || "Preparing workflow");
+    const percent = status.status === "completed" || status.status === "success"
+      ? 100
+      : Math.max(0, Math.min(100, Number(status.progress_percent) || 0));
+
+    if (target.label) {
+      target.label.textContent = total
+        ? (status.status === "running" && current
+          ? "Step " + current + " of " + total + " · " + action
+          : completed + " of " + total + " steps · " + action)
+        : action;
+    }
+    if (target.percent) target.percent.textContent = percent + "%";
+    if (target.fill) target.fill.style.width = percent + "%";
+    if (target.elapsed) {
+      target.elapsed.textContent = formatDuration(status.elapsed_seconds);
+    }
+    if (target.action) target.action.textContent = action;
+    if (target.eta) {
+      if (status.status === "running") {
+        const finish = formatExpectedFinish(status.expected_finish_at);
+        const remaining = status.estimated_remaining_seconds;
+        target.eta.textContent = remaining === null || remaining === undefined
+          ? finish
+          : finish + " · " + formatDuration(remaining) + " left";
+      } else {
+        target.eta.textContent = status.status === "completed" || status.status === "success"
+          ? "Finished"
+          : status.status.charAt(0).toUpperCase() + status.status.slice(1);
+      }
+    }
+  }
+
+  function renderTimeline(container, steps, countTarget) {
+    if (!container || !Array.isArray(steps)) return;
+
+    const existing = new Map(
+      Array.from(container.querySelectorAll("[data-step-id]"))
+        .map((node) => [node.getAttribute("data-step-id"), node])
+    );
+
+    if (container.querySelector(".empty-inline") && steps.length) {
+      container.innerHTML = "";
+    }
+
+    steps.forEach((step) => {
+      const stepId = String(step.id);
+      let item = existing.get(stepId);
+
+      if (!item) {
+        item = document.createElement("div");
+        item.className = "timeline-item";
+        item.setAttribute("data-step-id", stepId);
+
+        const marker = document.createElement("span");
+        marker.className = "timeline-marker";
+
+        const copy = document.createElement("div");
+        copy.className = "timeline-copy";
+        const action = document.createElement("strong");
+        action.setAttribute("data-step-action", "");
+        const meta = document.createElement("small");
+        meta.setAttribute("data-step-meta", "");
+        const error = document.createElement("small");
+        error.className = "timeline-error";
+        error.setAttribute("data-step-error", "");
+        error.hidden = true;
+        copy.append(action, meta, error);
+
+        const result = document.createElement("span");
+        result.className = "timeline-result";
+        result.setAttribute("data-step-result", "");
+
+        item.append(marker, copy, result);
+        container.appendChild(item);
+      }
+
+      item.className = "timeline-item timeline-" + String(step.status || "running");
+      const action = item.querySelector("[data-step-action]");
+      const meta = item.querySelector("[data-step-meta]");
+      const result = item.querySelector("[data-step-result]");
+      const error = item.querySelector("[data-step-error]");
+
+      if (action) action.textContent = String(step.action || "action").toUpperCase();
+      if (meta) {
+        meta.textContent = "Attempt " + step.attempt +
+          " · Record " + step.record_index +
+          " · Step " + step.step_index;
+      }
+      if (result) {
+        result.textContent = step.duration_ms === null || step.duration_ms === undefined
+          ? String(step.status || "running")
+          : (Number(step.duration_ms) / 1000).toFixed(1) + "s";
+      }
+      if (error) {
+        error.textContent = step.error || "";
+        error.hidden = !step.error;
+      }
+    });
+
+    if (countTarget) {
+      countTarget.textContent = steps.length + (steps.length === 1 ? " action" : " actions");
+    }
+  }
+
   function renderScreenshots(container, screenshots) {
     if (!container || !Array.isArray(screenshots)) return;
 
@@ -143,6 +275,11 @@
           }
         }
 
+        (elements.progressTargets || []).forEach((target) => {
+          renderProgressTarget(status, target);
+        });
+        renderTimeline(elements.timeline, status.timeline, elements.timelineCount);
+
         const [logData, screenshotData] = await Promise.all([
           fetchJson(logsUrl),
           fetchJson(screenshotsUrl)
@@ -153,7 +290,6 @@
 
         if (status.status !== "running") {
           shouldContinue = false;
-          if (elements.progress) elements.progress.hidden = true;
           if (elements.stopButton) elements.stopButton.disabled = true;
           if (elements.message) {
             elements.message.textContent = status.error
@@ -187,6 +323,9 @@
     const history = document.querySelector(".history-panel");
     if (!history) return null;
 
+    const emptyState = history.querySelector(".compact-empty");
+    if (emptyState) emptyState.remove();
+
     const card = document.createElement("article");
     card.className = "run-history-card";
     card.setAttribute("data-run-card", "");
@@ -216,6 +355,63 @@
     main.append(badge, id, started);
     header.append(main);
 
+    const progressPanel = document.createElement("section");
+    progressPanel.className = "run-progress-panel history-progress-panel";
+    const progressHeading = document.createElement("div");
+    progressHeading.className = "run-progress-heading";
+    const progressLabel = document.createElement("span");
+    progressLabel.setAttribute("data-progress-label", "");
+    progressLabel.textContent = "Preparing workflow…";
+    const progressPercent = document.createElement("strong");
+    progressPercent.setAttribute("data-progress-percent", "");
+    progressPercent.textContent = "0%";
+    progressHeading.append(progressLabel, progressPercent);
+
+    const progressTrack = document.createElement("div");
+    progressTrack.className = "progress-track";
+    const progressFill = document.createElement("span");
+    progressFill.className = "progress-fill";
+    progressFill.setAttribute("data-progress-fill", "");
+    progressFill.style.width = "0%";
+    progressTrack.appendChild(progressFill);
+
+    const progressStats = document.createElement("div");
+    progressStats.className = "run-progress-stats";
+    const elapsed = document.createElement("span");
+    elapsed.append("Elapsed ");
+    const elapsedValue = document.createElement("strong");
+    elapsedValue.setAttribute("data-progress-elapsed", "");
+    elapsedValue.textContent = "0s";
+    elapsed.appendChild(elapsedValue);
+
+    const eta = document.createElement("span");
+    eta.append("ETA ");
+    const etaValue = document.createElement("strong");
+    etaValue.setAttribute("data-progress-eta", "");
+    etaValue.textContent = "Calculating…";
+    eta.appendChild(etaValue);
+    progressStats.append(elapsed, eta);
+    progressPanel.append(progressHeading, progressTrack, progressStats);
+
+    const timelineSection = document.createElement("section");
+    timelineSection.className = "timeline-section";
+    const timelineHeading = document.createElement("div");
+    timelineHeading.className = "mini-heading";
+    timelineHeading.append("ACTION TIMELINE ");
+    const timelineCount = document.createElement("span");
+    timelineCount.setAttribute("data-timeline-count", "");
+    timelineCount.textContent = "0 actions";
+    timelineHeading.appendChild(timelineCount);
+    const timeline = document.createElement("div");
+    timeline.className = "action-timeline";
+    timeline.setAttribute("data-run-timeline", "");
+    timeline.appendChild(document.createElement("div"));
+    const emptyTimeline = document.createElement("div");
+    emptyTimeline.className = "empty-inline";
+    emptyTimeline.textContent = "Waiting for the first workflow action…";
+    timeline.replaceChildren(emptyTimeline);
+    timelineSection.append(timelineHeading, timeline);
+
     const grid = document.createElement("div");
     grid.className = "run-observability-grid";
 
@@ -240,7 +436,7 @@
     shotSection.append(shotHeading, shots);
 
     grid.append(logSection, shotSection);
-    card.append(header, grid);
+    card.append(header, progressPanel, timelineSection, grid);
     history.appendChild(card);
 
     return card;
@@ -250,14 +446,29 @@
     const statusBadge = card
       ? card.querySelector("[data-run-status-badge]")
       : null;
+    const progressTargets = [];
+
+    if (card) {
+      progressTargets.push({
+        label: card.querySelector("[data-progress-label]"),
+        percent: card.querySelector("[data-progress-percent]"),
+        fill: card.querySelector("[data-progress-fill]"),
+        elapsed: card.querySelector("[data-progress-elapsed]"),
+        eta: card.querySelector("[data-progress-eta]"),
+        action: card.querySelector("[data-progress-action]")
+      });
+    }
+    if (options.activeProgress) progressTargets.push(options.activeProgress);
 
     const elements = {
       statusBadge,
       logs: card ? card.querySelector("[data-run-logs]") : null,
       screenshots: card ? card.querySelector("[data-run-screenshots]") : null,
+      timeline: card ? card.querySelector("[data-run-timeline]") : null,
+      timelineCount: card ? card.querySelector("[data-timeline-count]") : null,
       errorBox: card ? card.querySelector("[data-run-error]") : null,
       message: options.message || null,
-      progress: options.progress || null,
+      progressTargets,
       stopButton: options.stopButton || null,
       runButton: options.runButton || null,
       rowStatus: options.rowStatus || null,
@@ -301,6 +512,13 @@
           const activeId = document.querySelector("[data-active-run-id]");
           const activeMessage = document.querySelector("[data-active-run-message]");
           const stopButton = document.querySelector("[data-stop-run]");
+          const activeProgress = activeBox ? {
+            label: activeBox.querySelector("[data-active-step-label]"),
+            percent: activeBox.querySelector("[data-active-progress-percent]"),
+            fill: activeBox.querySelector("[data-active-progress-fill]"),
+            elapsed: activeBox.querySelector("[data-active-elapsed]"),
+            eta: activeBox.querySelector("[data-active-eta]")
+          } : null;
 
           if (activeBox) activeBox.hidden = false;
           setStatusBadge(activeStatus, "running");
@@ -318,14 +536,14 @@
           if (card) {
             startPollingForCard(taskName, result.run_id, card, {
               message: activeMessage,
-              progress: activeBox ? activeBox.querySelector(".progress-track") : null,
+              activeProgress,
               stopButton,
               runButton: button
             });
           } else {
             startPollingForCard(taskName, result.run_id, null, {
               message: activeMessage,
-              progress: activeBox ? activeBox.querySelector(".progress-track") : null,
+              activeProgress,
               stopButton,
               runButton: button,
               refreshAfterFinish: true
