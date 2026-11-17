@@ -102,9 +102,16 @@ jobs:
           if (-not (Test-Path $compiler)) {
             throw "Inno Setup compiler was not found at $compiler"
           }
-          & $compiler "desktop\installer.iss" "/DAppVersion=0.1.0"
-          if ($LASTEXITCODE -ne 0) {
-            throw "Inno Setup failed with exit code $LASTEXITCODE"
+          Push-Location "desktop"
+          try {
+            & $compiler "installer.iss" "/DAppVersion=0.1.0"
+            $installerExitCode = $LASTEXITCODE
+          }
+          finally {
+            Pop-Location
+          }
+          if ($installerExitCode -ne 0) {
+            throw "Inno Setup failed with exit code $installerExitCode"
           }
 
       - name: Verify deliverables
